@@ -425,9 +425,35 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         if (layoutMode != GalleryView.LAYOUT_LEFT_TO_RIGHT &&
                 layoutMode != GalleryView.LAYOUT_RIGHT_TO_LEFT &&
                 layoutMode != GalleryView.LAYOUT_TOP_TO_BOTTOM) {
-            return GalleryView.LAYOUT_RIGHT_TO_LEFT;
+            return GalleryView.LAYOUT_LEFT_TO_RIGHT;
         } else {
             return layoutMode;
+        }
+    }
+
+    @ScaleMode
+    public static int sanitizeScaleMode(int scaleMode) {
+        if (scaleMode != GalleryView.SCALE_ORIGIN &&
+                scaleMode != GalleryView.SCALE_FIT_WIDTH &&
+                scaleMode != GalleryView.SCALE_FIT_HEIGHT &&
+                scaleMode != GalleryView.SCALE_FIT &&
+                scaleMode != GalleryView.SCALE_FIXED) {
+            return GalleryView.SCALE_FIT;
+        } else {
+            return scaleMode;
+        }
+    }
+
+    @StartPosition
+    public static int sanitizeStartPosition(int startPosition) {
+        if (startPosition != GalleryView.START_POSITION_TOP_LEFT &&
+                startPosition != GalleryView.START_POSITION_TOP_RIGHT &&
+                startPosition != GalleryView.START_POSITION_BOTTOM_LEFT &&
+                startPosition != GalleryView.START_POSITION_BOTTOM_RIGHT &&
+                startPosition != GalleryView.START_POSITION_CENTER) {
+            return GalleryView.START_POSITION_TOP_LEFT;
+        } else {
+            return startPosition;
         }
     }
 
