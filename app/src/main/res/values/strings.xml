@@ -1,0 +1,9 @@
+<resources>
+
+    <string name="app_name">GLGallery</string>
+    <string name="invalid_path">Invalid path</string>
+    <string name="out_of_range">Out of range</string>
+    <string name="decoding_failed">Decoding failed</string>
+    <string name="reading_failed">Reading failed</string>
+
+</resources>
