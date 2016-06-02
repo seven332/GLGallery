@@ -18,12 +18,22 @@ package com.hippo.glgallery;
 
 import android.support.annotation.NonNull;
 
-public class SimpleAdapter extends GalleryView.Adapter {
+import com.hippo.glview.image.ImageTexture;
+import com.hippo.glview.image.ImageWrapper;
+import com.hippo.glview.view.GLRootView;
+
+public class SimpleAdapter extends GalleryView.Adapter implements GalleryProvider.Listener {
 
     private final GalleryProvider mProvider;
+    private final ImageTexture.Uploader mUploader;
 
-    public SimpleAdapter(@NonNull GalleryProvider provider) {
+    public SimpleAdapter(@NonNull GLRootView glRootView, @NonNull GalleryProvider provider) {
         mProvider = provider;
+        mUploader = new ImageTexture.Uploader(glRootView);
+    }
+
+    public void clearUploader() {
+        mUploader.clear();
     }
 
     @Override
@@ -51,5 +61,78 @@ public class SimpleAdapter extends GalleryView.Adapter {
     @Override
     public int size() {
         return mProvider.size();
+    }
+
+    @Override
+    public void onDataChanged() {
+        mGalleryView.onDataChanged();
+    }
+
+    @Override
+    public void onPageWait(int index) {
+        GalleryPageView page = findPageByIndex(index);
+        if (page != null) {
+            page.showInfo();
+            page.setImage(null);
+            page.setPage(index + 1);
+            page.setProgress(GalleryPageView.PROGRESS_INDETERMINATE);
+            page.setError(null, null);
+        }
+    }
+
+    @Override
+    public void onPagePercent(int index, float percent) {
+        GalleryPageView page = findPageByIndex(index);
+        if (page != null) {
+            page.showInfo();
+            page.setImage(null);
+            page.setPage(index + 1);
+            page.setProgress(percent);
+            page.setError(null, null);
+        }
+    }
+
+    @Override
+    public void onPageSucceed(int index, ImageWrapper image) {
+        GalleryPageView page = findPageByIndex(index);
+        if (page != null) {
+            if (image.obtain()) {
+                ImageTexture imageTexture = new ImageTexture(image);
+                mUploader.addTexture(imageTexture);
+                page.showImage();
+                page.setImage(imageTexture);
+                page.setPage(index + 1);
+                page.setProgress(GalleryPageView.PROGRESS_GONE);
+                page.setError(null, null);
+            } else {
+                // The image is recycled, request again.
+                // TODO request loop ?
+                mProvider.request(index);
+            }
+        }
+    }
+
+    @Override
+    public void onPageFailed(int index, String error) {
+        GalleryPageView page = findPageByIndex(index);
+        if (page != null) {
+            page.showInfo();
+            page.setImage(null);
+            page.setPage(index + 1);
+            page.setProgress(GalleryPageView.PROGRESS_GONE);
+            page.setError(error, mGalleryView);
+        }
+    }
+
+    @Override
+    public void onDataChanged(int index) {
+        GalleryPageView page = findPageByIndex(index);
+        if (page != null) {
+            mProvider.request(index);
+        }
+    }
+
+    private GalleryPageView findPageByIndex(int index) {
+        return mGalleryView != null ? mGalleryView.findPageByIndex(index) : null;
     }
 }
