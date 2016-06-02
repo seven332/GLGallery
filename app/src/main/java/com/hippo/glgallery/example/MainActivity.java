@@ -7,7 +7,6 @@ import android.os.Environment;
 import com.hippo.glgallery.GalleryProvider;
 import com.hippo.glgallery.GalleryView;
 import com.hippo.glgallery.SimpleAdapter;
-import com.hippo.glgallery.SimpleProviderListener;
 import com.hippo.glview.view.GLRootView;
 import com.hippo.unifile.UniFile;
 
@@ -16,7 +15,7 @@ import java.io.File;
 public class MainActivity extends Activity {
 
     private GalleryProvider mGalleryProvider;
-    private SimpleProviderListener mProviderListener;
+    private SimpleAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,12 +26,13 @@ public class MainActivity extends Activity {
 
         mGalleryProvider = new DirGalleryProvider(getResources(),
                 UniFile.fromFile(new File(Environment.getExternalStorageDirectory(), "GLGallery")));
-        GalleryView galleryView = new GalleryView.Builder(this, new SimpleAdapter(mGalleryProvider))
+        mAdapter = new SimpleAdapter(glRootView, mGalleryProvider);
+        mAdapter.setShowIndex(false);
+        GalleryView galleryView = new GalleryView.Builder(this, mAdapter)
                 .setLayoutMode(GalleryView.LAYOUT_TOP_TO_BOTTOM)
                 .build();
-        mProviderListener = new SimpleProviderListener(glRootView, galleryView, mGalleryProvider);
 
-        mGalleryProvider.setListener(mProviderListener);
+        mGalleryProvider.setListener(mAdapter);
         mGalleryProvider.setGLRoot(glRootView);
 
         glRootView.setContentPane(galleryView);
@@ -44,6 +44,6 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         mGalleryProvider.stop();
-        mProviderListener.clearUploader();
+        mAdapter.clearUploader();
     }
 }
