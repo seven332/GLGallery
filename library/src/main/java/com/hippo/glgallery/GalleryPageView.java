@@ -138,7 +138,12 @@ public class GalleryPageView extends GLFrameLayout {
     }
 
     public void setPage(int page) {
+        mPage.setVisibility(VISIBLE);
         mPage.setText(Integer.toString(page));
+    }
+
+    public void hidePage() {
+        mPage.setVisibility(GONE);
     }
 
     public void setProgress(float progress) {
