@@ -70,6 +70,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     private int mOffsetY;
     private int mDeltaX;
     private int mDeltaY;
+    private boolean mClearKeepTop;
     private int mKeepTopPageId = GalleryView.Adapter.INVALID_ID;
     private int mKeepTop = INVALID_TOP;
     private int mFirstShownPageId = GalleryView.Adapter.INVALID_ID;
@@ -103,6 +104,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
         mOffsetY = 0;
         mDeltaX = 0;
         mDeltaY = 0;
+        mClearKeepTop = false;
         mKeepTopPageId = GalleryView.Adapter.INVALID_ID;
         mKeepTop = INVALID_TOP;
         mFirstShownPageId = GalleryView.Adapter.INVALID_ID;
@@ -480,6 +482,13 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
                 }
                 keepTop += page.getHeight() + mInterval;
             }
+        }
+
+        // Clear keep top if needed
+        if (mClearKeepTop) {
+            mClearKeepTop = false;
+            mKeepTopPageId = GalleryView.Adapter.INVALID_ID;
+            mKeepTop = INVALID_TOP;
         }
 
         final int startOffset;
@@ -1012,6 +1021,29 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
 
     @Override
     public void onDataChanged() {
+        // Pages will be all removed. Keep top can't be get for first shown page.
+        // Convert mFirstShownPageId to mKeepTopPageId to make sure top keep.
+        if (mFirstShownPageId != GalleryView.Adapter.INVALID_ID) {
+            final int keepTopId = mFirstShownPageId;
+            int keepTop = mOffsetY;
+            for (GalleryPageView page : mPages) {
+                // Check keep page
+                if (keepTopId == page.getId()) {
+                    break;
+                }
+                keepTop += page.getHeight() + mInterval;
+            }
+            // Must clean keep top in next layout, or fling will stuck
+            mClearKeepTop = true;
+            mKeepTopPageId = keepTopId;
+            mKeepTop = keepTop;
+            mFirstShownPageId = GalleryView.Adapter.INVALID_ID;
+        } else {
+            mKeepTopPageId = GalleryView.Adapter.INVALID_ID;
+            mKeepTop = INVALID_TOP;
+            mFirstShownPageId = GalleryView.Adapter.INVALID_ID;
+        }
+
         // Refill
         removeAllPages();
         mGalleryView.requestFill();
