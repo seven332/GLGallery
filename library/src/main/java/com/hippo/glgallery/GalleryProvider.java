@@ -16,13 +16,13 @@
 
 package com.hippo.glgallery;
 
+import android.support.annotation.CheckResult;
 import android.support.annotation.IntDef;
 import android.support.annotation.Nullable;
 import android.support.annotation.UiThread;
 
 import com.hippo.beerbelly.LruCache;
 import com.hippo.beerbelly.LruCacheHelper;
-import com.hippo.glview.annotation.RenderThread;
 import com.hippo.glview.glrenderer.GLCanvas;
 import com.hippo.glview.view.GLRoot;
 import com.hippo.image.ImageData;
@@ -82,13 +82,14 @@ public abstract class GalleryProvider {
     /**
      * Find image in cache first. Call {@link #onRequest(int)} if miss.
      */
-    @RenderThread
-    public final void request(int index) {
+    @CheckResult
+    public final ImageData request(int index) {
         final ImageData imageData = mImageCache.get(index);
         if (imageData != null) {
-            notifyPageSucceed(index, imageData);
+            return imageData;
         } else {
             onRequest(index);
+            return null;
         }
     }
 
@@ -266,6 +267,9 @@ public abstract class GalleryProvider {
 
         void onPagePercent(int index, float percent);
 
+        /**
+         * Here is where the ImageData first came.
+         */
         void onPageSucceed(int index, ImageData image);
 
         void onPageFailed(int index, String error);

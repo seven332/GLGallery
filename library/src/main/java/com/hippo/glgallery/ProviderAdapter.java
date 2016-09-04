@@ -24,6 +24,7 @@ import android.util.Log;
 import com.hippo.glview.image.ImageTexture;
 import com.hippo.glview.view.GLRootView;
 import com.hippo.image.ImageData;
+import com.hippo.yorozuya.MathUtils;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -75,6 +76,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
                 // Default false
                 mClipArray = new boolean[mSize];
             }
+        } else {
+            mClipArray = null;
         }
     }
 
@@ -98,6 +101,10 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
                 notifyDataChanged();
             }
         }
+    }
+
+    public int indexToId(int index) {
+        return index << 1;
     }
 
     @Override
@@ -202,6 +209,11 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         return isTail(index, clipIndex);
     }
 
+    @Override
+    public String idToString(int id) {
+        return "index = " + (id >> 1) + ", clip index = " + ((id & 1) != 0);
+    }
+
     private boolean isHead(int index, boolean clipIndex) {
         if (mSize <= 0 || mClipArray == null) {
             Log.e(LOG_TAG, "Should not call isHead when data is not ready");
@@ -218,10 +230,18 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         return index == mSize - 1 && (clipIndex || !mClipArray[index]);
     }
 
+    private void bindView(GalleryPageView page, int index, boolean clipIndex) {
+        final ImageData image = mProvider.request(index);
+        if (image != null) {
+            bindView(page, clipIndex, image);
+        } else {
+            page.showProgress(GalleryPageView.PROGRESS_INDETERMINATE, mShowIndex, index);
+        }
+    }
+
     @Override
     public void onBind(GalleryPageView view) {
-        mProvider.request(mIndex);
-        view.showProgress(GalleryPageView.PROGRESS_INDETERMINATE, mShowIndex, mIndex);
+        bindView(view, mIndex, mClipIndex);
     }
 
     @Override
@@ -256,6 +276,12 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         // Update size
         mSize = mProvider.getSize();
         ensureClipArray(true);
+        // Make keep sure current position is in range
+        if (mSize > 0) {
+            mIndex = MathUtils.clamp(mIndex, 0, mSize);
+            mClipIndex = false;
+            mId = mIndex << 1;
+        }
         notifyStateChanged();
     }
 
@@ -293,6 +319,29 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
     }
 
+    private void bindView(GalleryPageView page, boolean clipIndex, ImageData image) {
+        // Upload the texture
+        final ImageTexture imageTexture = new ImageTexture(image);
+        mUploader.addTexture(imageTexture);
+
+        final int width = image.getWidth();
+        final int height = image.getHeight();
+        final boolean clip = mClip != CLIP_NONE && (float) width / (float) height >= CLIP_LIMIT;
+
+        // Get clip rect
+        final Rect temp = mTemp;
+        if (!clip) {
+            temp.set(0, 0, width, height);
+        } else if ((mClip == CLIP_LEFT_RIGHT && !clipIndex) || (mClip == CLIP_RIGHT_LEFT && clipIndex)) {
+            temp.set(0, 0, width / 2, height);
+        } else if ((mClip == CLIP_LEFT_RIGHT && clipIndex) || (mClip == CLIP_RIGHT_LEFT && !clipIndex)) {
+            temp.set(width / 2, 0, width, height);
+        } else {
+            throw new IllegalStateException("Invalid clip: " + mClip);
+        }
+        page.showImage(imageTexture, temp);
+    }
+
     @Override
     public void onPageSucceed(int index, ImageData image) {
         if (mSize <= 0 || mClipArray == null) {
@@ -314,38 +363,11 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         final GalleryPageView page2 = newClip ? findPageById(index << 1 | 1) : null;
 
         if (page1 != null || page2 != null) {
-            final Rect temp = mTemp;
             if (page1 != null) {
-                // Upload the texture
-                final ImageTexture imageTexture = new ImageTexture(image);
-                mUploader.addTexture(imageTexture);
-                // Get clip rect
-                if (!newClip || mClip == CLIP_NONE) {
-                    temp.set(0, 0, width, height);
-                } else if (mClip == CLIP_LEFT_RIGHT) {
-                    temp.set(0, 0, width / 2, height);
-                } else if (mClip == CLIP_RIGHT_LEFT) {
-                    temp.set(width / 2, 0, width - width / 2, height);
-                } else {
-                    throw new IllegalStateException("Invalid clip: " + mClip);
-                }
-                page1.showImage(imageTexture, temp);
+                bindView(page1, false, image);
             }
             if (page2 != null) {
-                // Upload the texture
-                final ImageTexture imageTexture = new ImageTexture(image);
-                mUploader.addTexture(imageTexture);
-                // Get clip rect
-                if (mClip == CLIP_NONE) {
-                    temp.set(0, 0, width, height);
-                } else if (mClip == CLIP_LEFT_RIGHT) {
-                    temp.set(width / 2, 0, width - width / 2, height);
-                } else if (mClip == CLIP_RIGHT_LEFT) {
-                    temp.set(0, 0, width / 2, height);
-                } else {
-                    throw new IllegalStateException("Invalid clip: " + mClip);
-                }
-                page2.showImage(imageTexture, temp);
+                bindView(page2, true, image);
             }
         }
     }
@@ -377,7 +399,15 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         final GalleryPageView page1 = findPageById(index << 1);
         final GalleryPageView page2 = mClipArray[index] ? findPageById(index << 1 | 1) : null;
         if (page1 != null || page2 != null) {
-            mProvider.request(index);
+            final ImageData image = mProvider.request(index);
+            if (image != null) {
+                if (page1 != null) {
+                    bindView(page1, false, image);
+                }
+                if (page2 != null) {
+                    bindView(page1, true, image);
+                }
+            }
         }
     }
 
