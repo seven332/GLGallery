@@ -1,17 +1,21 @@
 apply plugin: 'com.android.library'
 apply plugin: 'com.github.dcendents.android-maven'
 
-group='com.github.seven332'
-
 android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.3"
+    compileSdkVersion 24
+    buildToolsVersion "24.0.2"
 
     defaultConfig {
         minSdkVersion 14
-        targetSdkVersion 23
+        targetSdkVersion 24
         versionCode 3
         versionName "0.1.2"
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += 'src/main/java-gen'
+        }
     }
 
     buildTypes {
@@ -22,11 +26,14 @@ android {
     }
 }
 
+tasks.withType(JavaCompile) {
+    compileTask -> compileTask.dependsOn ':postmangen:genPostman'
+}
+
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.github.seven332:beerbelly:0.1.4'
-    compile 'com.github.seven332:glview:0.1.0'
-    compile 'com.github.seven332:glview-image:0.1.0'
+    compile 'com.github.seven332:beerbelly:0.2.1'
+    compile 'com.github.seven332:glview-image:0.1.2'
     testCompile 'junit:junit:4.12'
 }
 
