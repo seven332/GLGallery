@@ -18,6 +18,7 @@ package com.hippo.glgallery;
 
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.support.annotation.Nullable;
 
 import com.hippo.glview.anim.AlphaAnimation;
 import com.hippo.glview.glrenderer.GLCanvas;
@@ -31,10 +32,6 @@ import java.util.Arrays;
 
 class ImageView extends GLView implements ImageTexture.Callback {
 
-    // TODO adjust scale max and min according to image size and screen size
-    private static final float SCALE_MIN = 1 / 10.0f;
-    private static final float SCALE_MAX = 10.0f;
-
     public static final int SCALE_ORIGIN = 0;
     public static final int SCALE_FIT_WIDTH = 1;
     public static final int SCALE_FIT_HEIGHT = 2;
@@ -47,83 +44,94 @@ class ImageView extends GLView implements ImageTexture.Callback {
     public static final int START_POSITION_BOTTOM_RIGHT = 3;
     public static final int START_POSITION_CENTER = 4;
 
-    private static final long ALPHA_ANIMATION_DURING = 300L;
+    private static final long ALPHA_ANIMATION_DURING = 200L;
 
-    private ImageTexture mImageTexture;
-    private int mTextureWidth;
-    private int mTextureHeight;
+    private ImageTexture mImage;
+    private int mClipLeft;
+    private int mClipTop;
+    private int mClipRight;
+    private int mClipBottom;
 
+    // The area in view for whole content
     private final RectF mDst = new RectF();
+    // The area in image to draw
     private final RectF mSrcActual = new RectF();
+    // The area in view to draw
     private final RectF mDstActual = new RectF();
+    // The area can be seen in Screen
     private final Rect mValidRect = new Rect();
 
     private int mScaleMode = SCALE_FIT;
     private int mStartPosition = START_POSITION_TOP_RIGHT;
-    private float mScaleValue = 1.0f;
+    // The scale value that setScaleOffset() passed
+    private float mAssignedScale = 1.0f;
+    // The scale value that shows actually
+    private float mActualScale = 1.0f;
 
-    private float mScale = 1.0f;
+    // The scale to fit width.
+    private float mWidthScale;
+    // The scale to fit height.
+    private float mHeightScale;
+    // The scale to fit view.
+    private float mFitScale;
+    // The max value that scale can be.
+    private float mMaxScale;
+    // The min value that scale can be.
+    private float mMinScale;
+    // mWidthScale, mHeightScale, mFitScale, Math.min(mFitScale * 2, mMaxScale)
+    private final float[] mScaleArray = new float[4];
 
+    // True for call setScaleOffset() before rendering
     private boolean mScaleOffsetDirty = true;
+    // True for call applyPositionInRoot() before rendering
     private boolean mPositionInRootDirty = true;
 
-    private final AlphaAnimation mAlphaAnimation;
+    // The alpha animation to make image show up smoothly
+    private AlphaAnimation mAlphaAnimation;
 
-    public ImageView() {
-        mAlphaAnimation = new AlphaAnimation(0.0f, 1.0f);
-        mAlphaAnimation.setDuration(ALPHA_ANIMATION_DURING);
-        mAlphaAnimation.setInterpolator(AnimationUtils.FAST_SLOW_INTERPOLATOR);
+    /**
+     * Return the content width. It might be smaller
+     * than image width if apply clip rect.
+     */
+    public int getContentWidth() {
+        return mClipRight - mClipLeft;
     }
 
-    public static int sanitizeScaleMode(int scaleMode) {
-        if (scaleMode != SCALE_ORIGIN &&
-                scaleMode != SCALE_FIT_WIDTH &&
-                scaleMode != SCALE_FIT_HEIGHT &&
-                scaleMode != SCALE_FIT &&
-                scaleMode != SCALE_FIXED) {
-            return SCALE_FIT;
-        } else {
-            return scaleMode;
-        }
-    }
-
-    public static int sanitizeStartPosition(int startPosition) {
-        if (startPosition != START_POSITION_TOP_LEFT &&
-                startPosition != START_POSITION_TOP_RIGHT &&
-                startPosition != START_POSITION_BOTTOM_LEFT &&
-                startPosition != START_POSITION_BOTTOM_RIGHT &&
-                startPosition != START_POSITION_CENTER) {
-            return START_POSITION_TOP_RIGHT;
-        } else {
-            return startPosition;
-        }
+    /**
+     * Return the content height. It might be smaller
+     * than image height if apply clip rect.
+     */
+    public int getContentHeight() {
+        return mClipBottom - mClipTop;
     }
 
     @Override
     protected int getSuggestedMinimumWidth() {
         return Math.max(super.getSuggestedMinimumWidth(),
-                mImageTexture == null ? 0 : mTextureWidth);
+                mImage == null ? 0 : getContentWidth());
     }
 
     @Override
     protected int getSuggestedMinimumHeight() {
         return Math.max(super.getSuggestedMinimumHeight(),
-                mImageTexture == null ? 0 : mTextureHeight);
+                mImage == null ? 0 : getContentHeight());
     }
 
     @Override
     protected void onMeasure(int widthSpec, int heightSpec) {
-        if (mImageTexture == null) {
+        if (mImage == null) {
             super.onMeasure(widthSpec, heightSpec);
         } else {
-            float ratio = (float) mTextureWidth / mTextureHeight;
-            int widthSize = MeasureSpec.getSize(widthSpec);
-            int heightSize = MeasureSpec.getSize(heightSpec);
-            int widthMode = MeasureSpec.getMode(widthSpec);
-            int heightMode = MeasureSpec.getMode(heightSpec);
+            final float ratio = (float) getContentWidth() / getContentHeight();
+            final int widthSize = MeasureSpec.getSize(widthSpec);
+            final int heightSize = MeasureSpec.getSize(heightSpec);
+            final int widthMode = MeasureSpec.getMode(widthSpec);
+            final int heightMode = MeasureSpec.getMode(heightSpec);
             int measureWidth = -1;
             int measureHeight = -1;
 
+            // Try to make the ratio of this view is the same as
+            // the ratio of the image.
             if (widthMode == MeasureSpec.EXACTLY) {
                 measureWidth = widthSize;
                 if (heightMode == MeasureSpec.EXACTLY) {
@@ -152,6 +160,12 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     @Override
     protected void onSizeChanged(int newW, int newH, int oldW, int oldH) {
+        // Update all scale value
+        if (mImage != null) {
+            updateScale();
+        }
+
+        // Trigger update render rect
         mScaleOffsetDirty = true;
         mPositionInRootDirty = true;
     }
@@ -160,88 +174,125 @@ class ImageView extends GLView implements ImageTexture.Callback {
     protected void onPositionInRootChanged(int x, int y, int oldX, int oldY) {
         mPositionInRootDirty = true;
 
-        if (mImageTexture != null) {
+        if (mImage != null) {
             getValidRect(mValidRect);
             if (!mValidRect.isEmpty()) {
-                mImageTexture.start();
+                mImage.start();
             } else {
-                mImageTexture.stop();
+                mImage.stop();
             }
         }
     }
 
-    public void getScaleDefault(float[] scaleDefault) {
-        if (mImageTexture == null) {
+    @Nullable
+    public float[] getSuggestedScaleLevel() {
+        return mImage != null ? mScaleArray : null;
+    }
+
+    private void updateScale() {
+        final int viewWidth = getWidth();
+        final int viewHeight = getHeight();
+        if (viewHeight <= 0 || viewHeight <= 0) {
             return;
         }
+        final int contentWidth = getContentWidth();
+        final int contentHeight = getContentHeight();
 
-        scaleDefault[0] = 1.0f;
-        scaleDefault[1] = (float) getWidth() / mTextureWidth;
-        scaleDefault[2] = (float) getHeight() / mTextureHeight;
-        scaleDefault[3] = Math.max(scaleDefault[1], scaleDefault[2]) * 2;
+        final float widthScale = (float) viewWidth / contentWidth;
+        final float heightScale = (float) viewHeight / contentHeight;
+        final float fitScale = Math.min(widthScale, heightScale);
 
-        scaleDefault[0] = MathUtils.clamp(scaleDefault[0], SCALE_MIN, SCALE_MAX);
-        scaleDefault[1] = MathUtils.clamp(scaleDefault[1], SCALE_MIN, SCALE_MAX);
-        scaleDefault[2] = MathUtils.clamp(scaleDefault[2], SCALE_MIN, SCALE_MAX);
-        scaleDefault[3] = MathUtils.clamp(scaleDefault[3], SCALE_MIN, SCALE_MAX);
+        mWidthScale = widthScale;
+        mHeightScale = heightScale;
+        mFitScale = fitScale;
+        mMaxScale = Math.max(10.0f, fitScale);
+        mMinScale = Math.min(1.0f / 10.0f, fitScale);
 
-        Arrays.sort(scaleDefault);
+        final float[] scaleArray = mScaleArray;
+        scaleArray[0] = mWidthScale;
+        scaleArray[0] = mHeightScale;
+        scaleArray[0] = mFitScale;
+        scaleArray[0] = Math.min(mFitScale * 2, mMaxScale);
+        Arrays.sort(scaleArray);
     }
 
-    public void setImageTexture(ImageTexture imageTexture) {
-        // Remove callback
-        if (mImageTexture != null) {
-            mImageTexture.setCallback(null);
-            mImageTexture.stop();
+    private void ensureAlphaAnimation() {
+        if (mAlphaAnimation == null) {
+            mAlphaAnimation = new AlphaAnimation(0.0f, 1.0f);
+            mAlphaAnimation.setDuration(ALPHA_ANIMATION_DURING);
+            mAlphaAnimation.setInterpolator(AnimationUtils.FAST_SLOW_INTERPOLATOR);
+        }
+    }
+
+    /**
+     * Set ImageTexture for the ImageView.
+     *
+     * @param clipRect it will be ignored if {@code null} or empty or no intersection.
+     */
+    public void setImageTexture(ImageTexture image, Rect clipRect) {
+        // Clean old image
+        if (mImage != null) {
+            mImage.setCallback(null);
+            mImage.stop();
         }
 
-        int oldTextureWidth = mTextureWidth;
-        int oldTextureHeight = mTextureHeight;
+        final int oldContentWidth = getContentWidth();
+        final int oldContentHeight = getContentHeight();
 
-        mImageTexture = imageTexture;
+        mImage = image;
 
-        if (imageTexture != null) {
-            imageTexture.setCallback(this);
-            mTextureWidth = imageTexture.getWidth();
-            mTextureHeight = imageTexture.getHeight();
-            // Avoid zero and negative
-            if (mTextureWidth <= 0) {
-                mTextureWidth = 1;
+        if (image != null) {
+            image.setCallback(this);
+
+            final int imageWidth = image.getWidth();
+            final int imageHeight = image.getHeight();
+
+            if (clipRect == null || !clipRect.intersect(0, 0, imageWidth, imageHeight) || clipRect.isEmpty()) {
+                mClipLeft = 0;
+                mClipTop = 0;
+                mClipRight = imageWidth;
+                mClipBottom = imageHeight;
+            } else {
+                mClipLeft = clipRect.left;
+                mClipTop = clipRect.top;
+                mClipRight = clipRect.right;
+                mClipBottom = clipRect.bottom;
             }
-            if (mTextureHeight <= 0) {
-                mTextureHeight = 1;
-            }
 
-            // Start alpha animation, do not show animation for image has no valid rect
+            updateScale();
+
+            // Only show alpha animation for the ImageView which can be seen.
             getValidRect(mValidRect);
             if (!mValidRect.isEmpty()) {
+                ensureAlphaAnimation();
                 startAnimation(mAlphaAnimation, true);
-                mImageTexture.start();
             }
         } else {
-            mTextureWidth = 1;
-            mTextureHeight = 1;
+            mClipLeft = 0;
+            mClipTop = 0;
+            mClipRight = 1;
+            mClipBottom = 1;
         }
 
         mScaleOffsetDirty = true;
         mPositionInRootDirty = true;
 
-        if (oldTextureWidth != mTextureWidth || oldTextureHeight != mTextureHeight) {
+        if (oldContentWidth != getContentWidth() || oldContentHeight != getContentHeight()) {
             requestLayout();
         }
     }
 
     public ImageTexture getImageTexture() {
-        return mImageTexture;
+        return mImage;
     }
 
     public boolean isLoaded() {
-        return mImageTexture != null;
+        return mImage != null;
     }
 
     public boolean canFlingVertically() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return false;
             }
@@ -252,7 +303,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     public boolean canFlingHorizontally() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return false;
             }
@@ -263,7 +314,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     public boolean canFling() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return false;
             }
@@ -274,7 +325,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     public int getMaxDx() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return 0;
             }
@@ -284,7 +335,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     public int getMinDx() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return 0;
             }
@@ -294,7 +345,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     public int getMaxDy() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return 0;
             }
@@ -304,7 +355,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     public int getMinDy() {
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
             if (mScaleOffsetDirty) {
                 return 0;
             }
@@ -313,44 +364,42 @@ class ImageView extends GLView implements ImageTexture.Callback {
     }
 
     public float getScale() {
-        return mScale;
+        return mActualScale;
     }
 
-    /**
-     * If target is shorter then screen, make it in screen center. If target is
-     * longer then parent, make sure target fill parent over
-     */
+    // If target is smaller then view, make it in screen center.
+    // If target is larger then view, make it fill screen.
     private void adjustPosition() {
-        RectF dst = mDst;
-        int screenWidth = getWidth();
-        int screenHeight = getHeight();
-        float targetWidth = dst.width();
-        float targetHeight = dst.height();
+        final RectF dst = mDst;
+        final int viewWidth = getWidth();
+        final int viewHeight = getHeight();
+        final float targetWidth = dst.width();
+        final float targetHeight = dst.height();
 
-        if (targetWidth > screenWidth) {
+        if (targetWidth > viewWidth) {
             float fixXOffset = dst.left;
             if (fixXOffset > 0) {
                 dst.left -= fixXOffset;
                 dst.right -= fixXOffset;
-            } else if ((fixXOffset = screenWidth - dst.right) > 0) {
+            } else if ((fixXOffset = viewWidth - dst.right) > 0) {
                 dst.left += fixXOffset;
                 dst.right += fixXOffset;
             }
         } else {
-            float left = (screenWidth - targetWidth) / 2;
+            final float left = (viewWidth - targetWidth) / 2;
             dst.offsetTo(left, dst.top);
         }
-        if (targetHeight > screenHeight) {
+        if (targetHeight > viewHeight) {
             float fixYOffset = dst.top;
             if (fixYOffset > 0) {
                 dst.top -= fixYOffset;
                 dst.bottom -= fixYOffset;
-            } else if ((fixYOffset = screenHeight - dst.bottom) > 0) {
+            } else if ((fixYOffset = viewHeight - dst.bottom) > 0) {
                 dst.top += fixYOffset;
                 dst.bottom += fixYOffset;
             }
         } else {
-            float top = (screenHeight - targetHeight) / 2;
+            final float top = (viewHeight - targetHeight) / 2;
             dst.offsetTo(dst.left, top);
         }
     }
@@ -358,94 +407,76 @@ class ImageView extends GLView implements ImageTexture.Callback {
     public void setScaleOffset(int scaleMode, int startPosition, float scaleValue) {
         mScaleMode = scaleMode;
         mStartPosition = startPosition;
-        mScaleValue = scaleValue;
+        mAssignedScale = scaleValue;
 
-        int screenWidth = getWidth();
-        int screenHeight = getHeight();
+        final int viewWidth = getWidth();
+        final int viewHeight = getHeight();
 
-        if (mImageTexture == null || screenWidth == 0 || screenHeight == 0) {
+        if (mImage == null || viewWidth <= 0 || viewHeight <= 0) {
+            // Can't handle it now, pend it.
             mScaleOffsetDirty = true;
             return;
         }
 
-        int textureWidth = mTextureWidth;
-        int textureHeight = mTextureHeight;
+        final int contentWidth = getContentWidth();
+        final int contentHeight = getContentHeight();
 
         // Set scale
-        float targetWidth;
-        float targetHeight;
+        final float targetWidth;
+        final float targetHeight;
         switch (scaleMode) {
             case SCALE_ORIGIN:
-                mScale = 1.0f;
-                targetWidth = textureWidth;
-                targetHeight = textureHeight;
+                mActualScale = 1.0f;
+                targetWidth = contentWidth;
+                targetHeight = contentHeight;
                 break;
             case SCALE_FIT_WIDTH:
-                mScale = (float) screenWidth / textureWidth;
-                targetWidth = screenWidth;
-                targetHeight = textureHeight * mScale;
+                mActualScale = mWidthScale;
+                targetWidth = viewWidth;
+                targetHeight = contentHeight * mActualScale;
                 break;
             case SCALE_FIT_HEIGHT:
-                mScale = (float) screenHeight / textureHeight;
-                targetWidth = textureWidth * mScale;
-                targetHeight = screenHeight;
+                mActualScale = mHeightScale;
+                targetWidth = contentWidth * mActualScale;
+                targetHeight = viewHeight;
                 break;
             case SCALE_FIT:
-                float scaleX = (float) screenWidth / textureWidth;
-                float scaleY = (float) screenHeight / textureHeight;
-                if (scaleX < scaleY) {
-                    mScale = scaleX;
-                    targetWidth = screenWidth;
-                    targetHeight = textureHeight * scaleX;
-                } else {
-                    mScale = scaleY;
-                    targetWidth = textureWidth * scaleY;
-                    targetHeight = screenHeight;
-                    break;
-                }
+                mActualScale = mFitScale;
+                targetWidth = contentWidth * mActualScale;
+                targetHeight = contentHeight * mActualScale;
                 break;
             case SCALE_FIXED:
             default:
-                mScale = scaleValue;
-                targetWidth = textureWidth * scaleValue;
-                targetHeight = textureHeight * scaleValue;
+                // Adjust scale, not too big, not too small
+                mActualScale = Math.max(Math.min(scaleValue, mMaxScale), mMinScale);
+                targetWidth = contentWidth * scaleValue;
+                targetHeight = contentHeight * scaleValue;
                 break;
         }
 
-        // adjust scale, not too big, not too small
-        if (mScale < SCALE_MIN) {
-            mScale = SCALE_MIN;
-            targetWidth = textureWidth * SCALE_MIN;
-            targetHeight = textureHeight * SCALE_MIN;
-        } else if (mScale > SCALE_MAX) {
-            mScale = SCALE_MAX;
-            targetWidth = textureWidth * SCALE_MAX;
-            targetHeight = textureHeight * SCALE_MAX;
-        }
-
         // Set mDst.left and mDst.right
-        RectF dst = mDst;
+        final RectF dst = mDst;
         switch (startPosition) {
             case START_POSITION_TOP_LEFT:
                 dst.left = 0;
                 dst.top = 0;
                 break;
             case START_POSITION_TOP_RIGHT:
-                dst.left = screenWidth - targetWidth;
+                dst.left = viewWidth - targetWidth;
                 dst.top = 0;
                 break;
             case START_POSITION_BOTTOM_LEFT:
                 dst.left = 0;
-                dst.top = screenHeight - targetHeight;
+                dst.top = viewHeight - targetHeight;
                 break;
             case START_POSITION_BOTTOM_RIGHT:
-                dst.left = screenWidth - targetWidth;
-                dst.top = screenHeight - targetHeight;
+                dst.left = viewWidth - targetWidth;
+                dst.top = viewHeight - targetHeight;
                 break;
             case START_POSITION_CENTER:
             default:
-                dst.left = (screenWidth - targetWidth) / 2;
-                dst.top = (screenHeight - targetHeight) / 2;
+                dst.left = (viewWidth - targetWidth) / 2;
+                dst.top = (viewHeight - targetHeight) / 2;
                 break;
         }
 
@@ -453,7 +484,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
         dst.right = dst.left + targetWidth;
         dst.bottom = dst.top + targetHeight;
 
-        // adjust position
+        // Adjust position
         adjustPosition();
 
         mScaleOffsetDirty = false;
@@ -463,7 +494,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
     public void scroll(int dx, int dy, int[] remain) {
         // Only work after layout
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
         }
         if (mScaleOffsetDirty) {
             remain[0] = dx;
@@ -471,13 +502,13 @@ class ImageView extends GLView implements ImageTexture.Callback {
             return;
         }
 
-        RectF dst = mDst;
-        int screenWidth = getWidth();
-        int screenHeight = getHeight();
-        float targetWidth = dst.width();
-        float targetHeight = dst.height();
+        final RectF dst = mDst;
+        final int viewWidth = getWidth();
+        final int viewHeight = getHeight();
+        final float targetWidth = dst.width();
+        final float targetHeight = dst.height();
 
-        if (targetWidth > screenWidth) {
+        if (targetWidth > viewWidth) {
             dst.left -= dx;
             dst.right -= dx;
 
@@ -486,7 +517,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
                 dst.left -= fixXOffset;
                 dst.right -= fixXOffset;
                 remain[0] = -(int) fixXOffset;
-            } else if ((fixXOffset = screenWidth - dst.right) > 0) {
+            } else if ((fixXOffset = viewWidth - dst.right) > 0) {
                 dst.left += fixXOffset;
                 dst.right += fixXOffset;
                 remain[0] = (int) fixXOffset;
@@ -496,7 +527,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
         } else {
             remain[0] = dx;
         }
-        if (targetHeight > screenHeight) {
+        if (targetHeight > viewHeight) {
             dst.top -= dy;
             dst.bottom -= dy;
 
@@ -505,7 +536,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
                 dst.top -= fixYOffset;
                 dst.bottom -= fixYOffset;
                 remain[1] = -(int) fixYOffset;
-            } else if ((fixYOffset = screenHeight - dst.bottom) > 0) {
+            } else if ((fixYOffset = viewHeight - dst.bottom) > 0) {
                 dst.top += fixYOffset;
                 dst.bottom += fixYOffset;
                 remain[1] = (int) fixYOffset;
@@ -516,6 +547,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
             remain[1] = dy;
         }
 
+        // If image scrolled, need update position in root.
         if (dx != remain[0] || dy != remain[1]) {
             mPositionInRootDirty = true;
             invalidate();
@@ -525,27 +557,28 @@ class ImageView extends GLView implements ImageTexture.Callback {
     public void scale(float focusX, float focusY, float scale) {
         // Only work after layout
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
         }
         if (mScaleOffsetDirty) {
             return;
         }
 
-        if ((mScale == SCALE_MAX && scale >= 1.0f) || (mScale == SCALE_MIN && scale < 1.0f)) {
+        // Check scale limit
+        if ((mActualScale >= mMaxScale && scale >= 1.0f) || (mActualScale <= mMinScale && scale < 1.0f)) {
             return;
         }
 
-        float newScale = mScale * scale;
-        newScale = MathUtils.clamp(newScale, SCALE_MIN, SCALE_MAX);
-        mScale = newScale;
-        RectF dst = mDst;
-        float left = (focusX - ((focusX - dst.left) * scale));
-        float top = (focusY - ((focusY - dst.top) * scale));
-        dst.set(left, top,
-                (left + (mImageTexture.getWidth() * newScale)),
-                (top + (mImageTexture.getHeight() * newScale)));
+        final float newScale = MathUtils.clamp(mActualScale * scale, mMinScale, mMaxScale);
+        mActualScale = newScale;
 
-        // adjust position
+        final RectF dst = mDst;
+        final float left = (focusX - ((focusX - dst.left) * scale));
+        final float top = (focusY - ((focusY - dst.top) * scale));
+        dst.set(left, top,
+                (left + (getContentWidth() * newScale)),
+                (top + (getContentHeight() * newScale)));
+
+        // Adjust position
         adjustPosition();
 
         mPositionInRootDirty = true;
@@ -553,23 +586,22 @@ class ImageView extends GLView implements ImageTexture.Callback {
     }
 
     private void applyPositionInRoot() {
-        int width = mImageTexture.getWidth();
-        int height = mImageTexture.getHeight();
-        RectF dst = mDst;
-        RectF dstActual = mDstActual;
-        RectF srcActual = mSrcActual;
+        final Rect validRect = mValidRect;
+        final RectF dst = mDst;
+        final RectF dstActual = mDstActual;
+        final RectF srcActual = mSrcActual;
 
         dstActual.set(dst);
-        getValidRect(mValidRect);
-        if (dstActual.intersect(mValidRect.left, mValidRect.top, mValidRect.right, mValidRect.bottom)) {
-            srcActual.left = MathUtils.lerp(0, width,
-                    MathUtils.delerp(dst.left, dst.right, dstActual.left));
-            srcActual.right = MathUtils.lerp(0, width,
-                    MathUtils.delerp(dst.left, dst.right, dstActual.right));
-            srcActual.top = MathUtils.lerp(0, height,
-                    MathUtils.delerp(dst.top, dst.bottom, dstActual.top));
-            srcActual.bottom = MathUtils.lerp(0, height,
-                    MathUtils.delerp(dst.top, dst.bottom, dstActual.bottom));
+        getValidRect(validRect);
+        if (dstActual.intersect(validRect.left, validRect.top, validRect.right, validRect.bottom)) {
+            srcActual.left = MathUtils.lerp(mClipLeft, mClipRight,
+                    MathUtils.norm(dst.left, dst.right, dstActual.left));
+            srcActual.right = MathUtils.lerp(mClipLeft, mClipRight,
+                    MathUtils.norm(dst.left, dst.right, dstActual.right));
+            srcActual.top = MathUtils.lerp(mClipTop, mClipBottom,
+                    MathUtils.norm(dst.top, dst.bottom, dstActual.top));
+            srcActual.bottom = MathUtils.lerp(mClipTop, mClipBottom,
+                    MathUtils.norm(dst.top, dst.bottom, dstActual.bottom));
         } else {
             // Can't be seen, set src and dst empty
             srcActual.setEmpty();
@@ -581,13 +613,13 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     @Override
     public void onRender(GLCanvas canvas) {
-        Texture texture = mImageTexture;
+        final Texture texture = mImage;
         if (texture == null) {
             return;
         }
 
         if (mScaleOffsetDirty) {
-            setScaleOffset(mScaleMode, mStartPosition, mScaleValue);
+            setScaleOffset(mScaleMode, mStartPosition, mAssignedScale);
         }
 
         if (mPositionInRootDirty) {

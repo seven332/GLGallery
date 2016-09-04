@@ -16,8 +16,8 @@
 
 package com.hippo.glgallery;
 
-import com.hippo.glview.glrenderer.BasicTexture;
-import com.hippo.glview.glrenderer.Texture;
+import android.graphics.Rect;
+
 import com.hippo.glview.image.GLImageMovableTextView;
 import com.hippo.glview.image.ImageMovableTextTexture;
 import com.hippo.glview.image.ImageTexture;
@@ -29,10 +29,10 @@ import com.hippo.glview.widget.GLTextureView;
 
 public class GalleryPageView extends GLFrameLayout {
 
-    public static final int INVALID_INDEX = -1;
-
     public static final float PROGRESS_GONE = -1.0f;
     public static final float PROGRESS_INDETERMINATE = -2.0f;
+
+    private final TextBinder mTextBinder;
 
     private final ImageView mImage;
     private final GLLinearLayout mInfo;
@@ -42,11 +42,11 @@ public class GalleryPageView extends GLFrameLayout {
 
     private final int mMinHeight;
 
-    private int mIndex = INVALID_INDEX;
-
-    public GalleryPageView(ImageMovableTextTexture pageTextTexture,
+    public GalleryPageView(ImageMovableTextTexture pageTextTexture, TextBinder textBinder,
             int progressColor, int progressBgColor, int progressSize,
             int minHeight, int infoInterval) {
+        mTextBinder = textBinder;
+
         // Add image
         mImage = new ImageView();
         GravityLayoutParams glp = new GravityLayoutParams(LayoutParams.MATCH_PARENT,
@@ -103,50 +103,91 @@ public class GalleryPageView extends GLFrameLayout {
         }
     }
 
-    int getIndex() {
-        return mIndex;
+    /**
+     * Clear all resources
+     */
+    public void clear() {
+        setImage(null, null);
+        setError(null);
     }
 
-    void setIndex(int index) {
-        mIndex = index;
+    /**
+     * Show progress in the View. showIndex to decide whether show index text.
+     * index is the number to show.
+     */
+    public void showProgress(float progress, boolean showIndex, int index) {
+        showInfo();
+        setImage(null, null);
+        if (showIndex) {
+            setIndex(index);
+        } else {
+            hideIndex();
+        }
+        setProgress(progress);
+        setError(null);
     }
 
-    public void showImage() {
+    /**
+     * Show image in the View.
+     */
+    public void showImage(ImageTexture image, Rect rect) {
+        showImage();
+        setImage(image, rect);
+        setProgress(GalleryPageView.PROGRESS_GONE);
+        setError(null);
+    }
+
+    /**
+     * Show error text in the View.
+     */
+    public void showError(String error, boolean showIndex, int index) {
+        showInfo();
+        setImage(null, null);
+        if (showIndex) {
+            setIndex(index);
+        } else {
+            hideIndex();
+        }
+        setProgress(GalleryPageView.PROGRESS_GONE);
+        setError(error);
+    }
+
+    private void showImage() {
         mImage.setVisibility(VISIBLE);
         mInfo.setVisibility(GONE);
     }
 
-    public void showInfo() {
+    private void showInfo() {
         // For image valid rect
         mImage.setVisibility(INVISIBLE);
         mInfo.setVisibility(VISIBLE);
     }
 
     private void unbindImage() {
-        ImageTexture texture = mImage.getImageTexture();
+        final ImageTexture texture = mImage.getImageTexture();
         if (texture != null) {
-            mImage.setImageTexture(null);
+            mImage.setImageTexture(null, null);
             texture.recycle();
         }
     }
 
-    public void setImage(ImageTexture imageTexture) {
+    private void setImage(ImageTexture imageTexture, Rect rect) {
         unbindImage();
         if (imageTexture != null) {
-            mImage.setImageTexture(imageTexture);
+            mImage.setImageTexture(imageTexture, rect);
         }
     }
 
-    public void setPage(int page) {
+    private void setIndex(int index) {
         mPage.setVisibility(VISIBLE);
-        mPage.setText(Integer.toString(page));
+        mPage.setText(Integer.toString(index));
     }
 
-    public void hidePage() {
+    private void hideIndex() {
         mPage.setVisibility(GONE);
     }
 
-    public void setProgress(float progress) {
+    private void setProgress(float progress) {
         if (progress == PROGRESS_GONE) {
             mProgress.setVisibility(GONE);
         } else if (progress == PROGRESS_INDETERMINATE) {
@@ -159,31 +200,26 @@ public class GalleryPageView extends GLFrameLayout {
         }
     }
 
-    private void unbindError() {
-        Texture texture = mError.getTexture();
-        if (texture != null) {
-            mError.setTexture(null);
-            if (texture instanceof BasicTexture) {
-                ((BasicTexture) texture).recycle();
-            }
-        }
-    }
-
-    public void setError(String error, GalleryView galleryView) {
-        unbindError();
+    private void setError(String error) {
+        mTextBinder.unbindText(mError);
         if (error == null) {
             mError.setVisibility(GONE);
         } else {
             mError.setVisibility(VISIBLE);
-            galleryView.bindErrorView(mError, error);
+            mTextBinder.bindText(mError, error);
         }
     }
 
-    ImageView getImageView() {
+    public ImageView getImageView() {
         return mImage;
     }
 
-    boolean isLoaded() {
+    public boolean isLoaded() {
         return mImage.getVisibility() == VISIBLE;
+    }
+
+    public interface TextBinder {
+        void unbindText(GLTextureView view);
+        void bindText(GLTextureView view, String str);
     }
 }

@@ -17,7 +17,9 @@
 package com.hippo.glgallery;
 
 import android.content.Context;
-import android.os.SystemClock;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.support.v4.view.GestureDetectorCompat;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
@@ -58,12 +60,15 @@ class GestureRecognizer {
 
     public GestureRecognizer(Context context, Listener listener) {
         mListener = listener;
-        MyGestureListener gestureListener = new MyGestureListener();
-        mGestureDetector = new GestureDetectorCompat(context, gestureListener,
-                null /* ignoreMultitouch */);
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final MyGestureListener gestureListener = new MyGestureListener();
+        mGestureDetector = new GestureDetectorCompat(context, gestureListener, handler);
         mGestureDetector.setOnDoubleTapListener(gestureListener);
-        mScaleDetector = new ScaleGestureDetector(
-                context, new MyScaleListener());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            mScaleDetector = new ScaleGestureDetector(context, new MyScaleListener(), handler);
+        } else {
+            mScaleDetector = new ScaleGestureDetector(context, new MyScaleListener());
+        }
         mDownUpDetector = new DownUpDetector(new MyDownUpListener());
     }
 
@@ -71,18 +76,6 @@ class GestureRecognizer {
         mScaleDetector.onTouchEvent(event);
         mGestureDetector.onTouchEvent(event);
         mDownUpDetector.onTouchEvent(event);
-    }
-
-    public boolean isDown() {
-        return mDownUpDetector.isDown();
-    }
-
-    public void cancelScale() {
-        long now = SystemClock.uptimeMillis();
-        MotionEvent cancelEvent = MotionEvent.obtain(
-                now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
-        mScaleDetector.onTouchEvent(cancelEvent);
-        cancelEvent.recycle();
     }
 
     private class MyGestureListener

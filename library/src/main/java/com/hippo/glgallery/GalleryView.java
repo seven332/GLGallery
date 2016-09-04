@@ -23,6 +23,7 @@ import android.graphics.Typeface;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Log;
 import android.view.MotionEvent;
 
 import com.hippo.glview.annotation.RenderThread;
@@ -38,18 +39,17 @@ import com.hippo.glview.view.GLView;
 import com.hippo.glview.widget.GLEdgeView;
 import com.hippo.glview.widget.GLProgressView;
 import com.hippo.glview.widget.GLTextureView;
-import com.hippo.yorozuya.MathUtils;
 import com.hippo.yorozuya.Pool;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
-public final class GalleryView extends GLView implements GestureRecognizer.Listener {
+public final class GalleryView extends GLView implements GestureRecognizer.Listener, GalleryPageView.TextBinder {
 
-    @IntDef({LAYOUT_LEFT_TO_RIGHT, LAYOUT_RIGHT_TO_LEFT, LAYOUT_TOP_TO_BOTTOM})
+    private static final String LOG_TAG = GalleryView.class.getSimpleName();
+
+    @IntDef({LAYOUT_PAGER_LEFT_TO_RIGHT, LAYOUT_PAGER_RIGHT_TO_LEFT,
+            LAYOUT_SCROLL_TOP_TO_BOTTOM, LAYOUT_SCROLL_LEFT_TO_RIGHT, LAYOUT_SCROLL_RIGHT_TO_LEFT})
     @Retention(RetentionPolicy.SOURCE)
     public @interface LayoutMode {}
 
@@ -62,9 +62,11 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     @Retention(RetentionPolicy.SOURCE)
     public @interface StartPosition {}
 
-    public static final int LAYOUT_LEFT_TO_RIGHT = 0;
-    public static final int LAYOUT_RIGHT_TO_LEFT = 1;
-    public static final int LAYOUT_TOP_TO_BOTTOM = 2;
+    public static final int LAYOUT_PAGER_LEFT_TO_RIGHT = 0;
+    public static final int LAYOUT_PAGER_RIGHT_TO_LEFT = 1;
+    public static final int LAYOUT_SCROLL_TOP_TO_BOTTOM = 2;
+    public static final int LAYOUT_SCROLL_LEFT_TO_RIGHT = 3;
+    public static final int LAYOUT_SCROLL_RIGHT_TO_LEFT = 4;
 
     public static final int SCALE_ORIGIN = ImageView.SCALE_ORIGIN;
     public static final int SCALE_FIT_WIDTH = ImageView.SCALE_FIT_WIDTH;
@@ -83,41 +85,28 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private static final float[] MENU_AREA = {1.0f / 3.0f, 0.0f, 2.0f / 3.0f, 1.0f / 2.0f};
     private static final float[] SLIDER_AREA = {1.0f / 3.0f, 1.0f / 2.0f, 2.0f / 3.0f, 1.0f};
 
-    private static final int METHOD_ON_SINGLE_TAP_UP = 0;
-    private static final int METHOD_ON_SINGLE_TAP_CONFIRMED = 1;
-    private static final int METHOD_ON_DOUBLE_TAP = 2;
-    private static final int METHOD_ON_DOUBLE_TAP_CONFIRMED = 3;
-    private static final int METHOD_ON_LONG_PRESS = 4;
-    private static final int METHOD_ON_SCROLL = 5;
-    private static final int METHOD_ON_FLING = 6;
-    private static final int METHOD_ON_SCALE_BEGIN = 7;
-    private static final int METHOD_ON_SCALE = 8;
-    private static final int METHOD_ON_SCALE_END = 9;
-    private static final int METHOD_ON_DOWN = 10;
-    private static final int METHOD_ON_UP = 11;
-    private static final int METHOD_ON_POINTER_DOWN = 12;
-    private static final int METHOD_ON_POINTER_UP = 13;
-    private static final int METHOD_SET_LAYOUT_MODE = 14;
-    private static final int METHOD_SET_CURRENT_PAGE = 15;
-    private static final int METHOD_PAGE_LEFT = 16;
-    private static final int METHOD_PAGE_RIGHT = 17;
-    private static final int METHOD_SET_SCALE_MODE = 18;
-    private static final int METHOD_SET_START_POSITION = 19;
-    private static final int METHOD_ON_ATTACH_TO_ROOT = 20;
-
     private final Context mContext;
-    private Adapter mAdapter;
     private final GestureRecognizer mGestureRecognizer;
+
     @Nullable
-    private final Listener mListener;
+    private Adapter mAdapter;
+    @Nullable
+    private Listener mListener;
 
-    private ImageMovableTextTexture mPageTextTexture;
+    private ImageMovableTextTexture mIndexTextTexture;
 
+    private WaitingLayoutManager mWaitingLayoutManager;
+    private ErrorLayoutManager mErrorLayoutManager;
     private PagerLayoutManager mPagerLayoutManager;
     private ScrollLayoutManager mScrollLayoutManager;
     @Nullable
     private LayoutManager mLayoutManager;
 
+    private final Postman mPostman;
+
+    // EdgeView is special, it is not a child of GalleryView,
+    // but it works like a child of GalleryView.
+    // It make task easier for LayoutManager.
     private final GLEdgeView mEdgeView;
     private final Pool<GalleryPageView> mGalleryPageViewPool = new Pool<>(5);
     private GLProgressView mProgressCache;
@@ -130,9 +119,9 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private final int mPageInfoInterval;
     private final int mProgressColor;
     private final int mProgressSize;
-    private final int mPageTextColor;
-    private final int mPageTextSize;
-    private final Typeface mPageTextTypeface;
+    private final int mIndexTextColor;
+    private final int mIndexTextSize;
+    private final Typeface mIndexTextTypeface;
     private final int mErrorTextSize;
     private final int mErrorTextColor;
 
@@ -145,155 +134,45 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
     private boolean mScale = false;
     private boolean mScroll = false;
-    private boolean mFirstScroll = false;
 
     private final Rect mLeftArea = new Rect();
     private final Rect mRightArea = new Rect();
     private final Rect mMenuArea = new Rect();
     private final Rect mSliderArea = new Rect();
 
-    private int mLayoutMode = LAYOUT_RIGHT_TO_LEFT;
-    private int mScaleMode = ImageView.SCALE_FIT;
-    private int mStartPosition = ImageView.START_POSITION_TOP_LEFT;
-    private int mIndex;
+    private int mLayoutMode;
+    private int mScaleMode;
+    private int mStartPosition;
 
-    private final List<Integer> mMethodList = new ArrayList<>(5);
-    private final List<Object[]> mArgsList = new ArrayList<>(5);
-    private final List<Integer> mMethodListTemp = new ArrayList<>(5);
-    private final List<Object[]> mArgsListTemp = new ArrayList<>(5);
-
-    private final AtomicInteger mCurrentIndex = new AtomicInteger(GalleryPageView.INVALID_INDEX);
+    // The id to represent current page
+    private int mCurrentId;
 
     public static class Builder {
 
         private final Context mContext;
-        private final Adapter mAdapter;
-        private Listener mListener;
 
-        private int mLayoutMode = LAYOUT_LEFT_TO_RIGHT;
-        private int mScaleMode = SCALE_FIT;
-        private int mStartPosition = START_POSITION_TOP_LEFT;
-        private int mStartPage = 0;
+        public int layoutMode = LAYOUT_PAGER_LEFT_TO_RIGHT;
+        public int scaleMode = SCALE_FIT;
+        public int startPosition = START_POSITION_TOP_LEFT;
 
-        private int mBackgroundColor = Color.BLACK;
-        private int mEdgeColor = Color.WHITE;
-        private int mPagerInterval = 48;
-        private int mScrollInterval = 24;
-        private int mPageMinHeight = 256;
-        private int mPageInfoInterval = 24;
-        private int mProgressColor = Color.WHITE;
-        private int mProgressSize = 56;
-        private int mPageTextColor = Color.WHITE;
-        private int mPageTextSize = 56;
-        private Typeface mPageTextTypeface = Typeface.DEFAULT;
-        private int mErrorTextColor = Color.RED;
-        private int mErrorTextSize = 24;
-        private String mDefaultErrorString = "Error";
-        private String mEmptyString = "Empty";
+        public int backgroundColor = Color.BLACK;
+        public int edgeColor = Color.WHITE;
+        public int pagerInterval = 48;
+        public int scrollInterval = 24;
+        public int pageMinHeight = 256;
+        public int pageInfoInterval = 24;
+        public int progressColor = Color.WHITE;
+        public int progressSize = 56;
+        public int indexTextColor = Color.WHITE;
+        public int indexTextSize = 56;
+        public Typeface indexTextTypeface = Typeface.DEFAULT;
+        public int errorTextColor = Color.RED;
+        public int errorTextSize = 24;
+        public String defaultErrorString = "Error";
+        public String emptyString = "Empty";
 
-        public Builder(@NonNull Context context, @NonNull Adapter adapter) {
+        public Builder(@NonNull Context context) {
             mContext = context;
-            mAdapter = adapter;
-        }
-
-        public Builder setListener(Listener listener) {
-            mListener = listener;
-            return this;
-        }
-
-        public Builder setLayoutMode(@LayoutMode int layoutMode) {
-            mLayoutMode = layoutMode;
-            return this;
-        }
-
-        public Builder setScaleMode(@ScaleMode int scaleMode) {
-            mScaleMode = scaleMode;
-            return this;
-        }
-
-        public Builder setStartPosition(@StartPosition int startPosition) {
-            mStartPosition = startPosition;
-            return this;
-        }
-
-        public Builder setStartPage(int startPage) {
-            mStartPage = startPage;
-            return this;
-        }
-
-        public Builder setBackgroundColor(int backgroundColor) {
-            mBackgroundColor = backgroundColor;
-            return this;
-        }
-
-        public Builder setEdgeColor(int edgeColor) {
-            mEdgeColor = edgeColor;
-            return this;
-        }
-
-        public Builder setPagerInterval(int pagerInterval) {
-            mPagerInterval = pagerInterval;
-            return this;
-        }
-
-        public Builder setScrollInterval(int scrollInterval) {
-            mScrollInterval = scrollInterval;
-            return this;
-        }
-
-        public Builder setPageMinHeight(int pageMinHeight) {
-            mPageMinHeight = pageMinHeight;
-            return this;
-        }
-
-        public Builder setPageInfoInterval(int pageInfoInterval) {
-            mPageInfoInterval = pageInfoInterval;
-            return this;
-        }
-
-        public Builder setProgressColor(int progressColor) {
-            mProgressColor = progressColor;
-            return this;
-        }
-
-        public Builder setProgressSize(int progressSize) {
-            mProgressSize = progressSize;
-            return this;
-        }
-
-        public Builder setPageTextColor(int pageTextColor) {
-            mPageTextColor = pageTextColor;
-            return this;
-        }
-
-        public Builder setPageTextSize(int pageTextSize) {
-            mPageTextSize = pageTextSize;
-            return this;
-        }
-
-        public Builder setPageTextTypeface(Typeface pageTextTypeface) {
-            mPageTextTypeface = pageTextTypeface;
-            return this;
-        }
-
-        public Builder setErrorTextColor(int errorTextColor) {
-            mErrorTextColor = errorTextColor;
-            return this;
-        }
-
-        public Builder setErrorTextSize(int errorTextSize) {
-            mErrorTextSize = errorTextSize;
-            return this;
-        }
-
-        public Builder setDefaultErrorString(String defaultErrorString) {
-            mDefaultErrorString = defaultErrorString;
-            return this;
-        }
-
-        public Builder setEmptyString(String emptyString) {
-            mEmptyString = emptyString;
-            return this;
         }
 
         public GalleryView build() {
@@ -303,34 +182,71 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
     private GalleryView(Builder build) {
         mContext = build.mContext;
-        mAdapter = build.mAdapter;
-        mAdapter.setGalleryView(this);
-        mListener = build.mListener;
         mGestureRecognizer = new GestureRecognizer(mContext, this);
-        mEdgeView = new GLEdgeView(build.mEdgeColor);
+        mEdgeView = new GLEdgeView(build.edgeColor);
+        mPostman = new Postman(this);
 
-        mLayoutMode = build.mLayoutMode;
-        mScaleMode = build.mScaleMode;
-        mStartPosition = build.mStartPosition;
-        mIndex = MathUtils.clamp(build.mStartPage, 0, Integer.MAX_VALUE);
+        mLayoutMode = build.layoutMode;
+        mScaleMode = build.scaleMode;
+        mStartPosition = build.startPosition;
 
-        mBackgroundColor = build.mBackgroundColor;
-        mPageMinHeight = build.mPageMinHeight;
-        mPagerInterval = build.mPagerInterval;
-        mScrollInterval = build.mScrollInterval;
-        mPageInfoInterval = build.mPageInfoInterval;
-        mProgressColor = build.mProgressColor;
-        mProgressSize = build.mProgressSize;
-        mPageTextColor = build.mPageTextColor;
-        mPageTextSize = build.mPageTextSize;
-        mPageTextTypeface = build.mPageTextTypeface;
-        mErrorTextColor = build.mErrorTextColor;
-        mErrorTextSize = build.mErrorTextSize;
+        mBackgroundColor = build.backgroundColor;
+        mPageMinHeight = build.pageMinHeight;
+        mPagerInterval = build.pagerInterval;
+        mScrollInterval = build.scrollInterval;
+        mPageInfoInterval = build.pageInfoInterval;
+        mProgressColor = build.progressColor;
+        mProgressSize = build.progressSize;
+        mIndexTextColor = build.indexTextColor;
+        mIndexTextSize = build.indexTextSize;
+        mIndexTextTypeface = build.indexTextTypeface;
+        mErrorTextColor = build.errorTextColor;
+        mErrorTextSize = build.errorTextSize;
 
-        mDefaultErrorString = build.mDefaultErrorString;
-        mEmptyString = build.mEmptyString;
+        mDefaultErrorString = build.defaultErrorString;
+        mEmptyString = build.emptyString;
 
         setBackgroundColor(mBackgroundColor);
+    }
+
+    public void setAdapter(@Nullable Adapter adapter) {
+        // Detach LayoutManager to clear view
+        if (mLayoutManager != null) {
+            detachLayoutManager();
+        }
+
+        // Disconnect old Adapter and GalleryView
+        if (mAdapter != null) {
+            mAdapter.setGalleryView(null);
+            mAdapter = null;
+        }
+
+        if (adapter != null) {
+            mAdapter = adapter;
+            adapter.setGalleryView(this);
+            // Attach LayoutManager now if GalleryView is attached to root
+            if (isAttachedToRoot()) {
+                attachLayoutManager();
+            }
+        }
+    }
+
+    public void setListener(@Nullable Listener listener) {
+        mListener = listener;
+    }
+
+    private void ensureWaitingLayoutManager() {
+        if (mWaitingLayoutManager == null) {
+            mWaitingLayoutManager = new WaitingLayoutManager(
+                    this, mProgressSize, mProgressColor, mBackgroundColor);
+        }
+    }
+
+    private void ensureErrorLayoutManager() {
+        if (mErrorLayoutManager == null) {
+            mErrorLayoutManager = new ErrorLayoutManager(
+                    this, mErrorTextSize, mErrorTextColor);
+        }
     }
 
     private void ensurePagerLayoutManager() {
@@ -346,123 +262,194 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         }
     }
 
+    @PagerLayoutManager.Mode
+    private int getPagerModeFromLayoutMode(int layoutMode) {
+        switch (layoutMode) {
+            case LAYOUT_PAGER_LEFT_TO_RIGHT:
+                return PagerLayoutManager.MODE_LEFT_TO_RIGHT;
+            case LAYOUT_PAGER_RIGHT_TO_LEFT:
+                return PagerLayoutManager.MODE_RIGHT_TO_LEFT;
+            default:
+                throw new IllegalStateException("Can't convert this layout mode to pager mode: " + layoutMode);
+        }
+    }
+
+    @ScrollLayoutManager.Mode
+    private int getScrollModeFromLayoutMode(int layoutMode) {
+        switch (layoutMode) {
+            case LAYOUT_SCROLL_TOP_TO_BOTTOM:
+                return ScrollLayoutManager.MODE_TOP_TO_BOTTOM;
+            case LAYOUT_SCROLL_LEFT_TO_RIGHT:
+                return ScrollLayoutManager.MODE_LEFT_TO_RIGHT;
+            case LAYOUT_SCROLL_RIGHT_TO_LEFT:
+                return ScrollLayoutManager.MODE_RIGHT_TO_LEFT;
+            default:
+                throw new IllegalStateException("Can't convert this layout mode to scroll mode: " + layoutMode);
+        }
+    }
+
     private void attachLayoutManager() {
-        if (null != mLayoutManager) {
+        if (mAdapter == null) {
+            Log.e(LOG_TAG, "No Adapter for the GalleryView.");
             return;
         }
 
-        switch (mLayoutMode) {
-            case LAYOUT_LEFT_TO_RIGHT:
-                ensurePagerLayoutManager();
-                mPagerLayoutManager.setMode(PagerLayoutManager.MODE_LEFT_TO_RIGHT);
-                mPagerLayoutManager.onAttach(mAdapter);
-                mPagerLayoutManager.setCurrentIndex(mIndex);
+        if (mLayoutManager != null) {
+            Log.e(LOG_TAG, "Already attach LayoutManager.");
+            return;
+        }
+
+        final int state = mAdapter.getState();
+        switch (state) {
+            case Adapter.STATE_WAIT:
+                ensureWaitingLayoutManager();
+                mWaitingLayoutManager.onAttach(mAdapter);
                 mAdapter = null;
-                mLayoutManager = mPagerLayoutManager;
+                mLayoutManager = mWaitingLayoutManager;
                 break;
-            case LAYOUT_RIGHT_TO_LEFT:
-                ensurePagerLayoutManager();
-                mPagerLayoutManager.setMode(PagerLayoutManager.MODE_RIGHT_TO_LEFT);
-                mPagerLayoutManager.onAttach(mAdapter);
-                mPagerLayoutManager.setCurrentIndex(mIndex);
+            case Adapter.STATE_EMPTY:
+            case Adapter.STATE_ERROR:
+                ensureErrorLayoutManager();
+                mErrorLayoutManager.onAttach(mAdapter);
                 mAdapter = null;
-                mLayoutManager = mPagerLayoutManager;
+                mLayoutManager = mErrorLayoutManager;
                 break;
-            case LAYOUT_TOP_TO_BOTTOM:
-                ensureScrollLayoutManager();
-                mScrollLayoutManager.onAttach(mAdapter);
-                mScrollLayoutManager.setCurrentIndex(mIndex);
-                mAdapter = null;
-                mLayoutManager = mScrollLayoutManager;
+            case Adapter.STATE_READY:
+                switch (mLayoutMode) {
+                    case LAYOUT_PAGER_LEFT_TO_RIGHT:
+                    case LAYOUT_PAGER_RIGHT_TO_LEFT:
+                        ensurePagerLayoutManager();
+                        mPagerLayoutManager.setMode(getPagerModeFromLayoutMode(mLayoutMode));
+                        mPagerLayoutManager.onAttach(mAdapter);
+                        mAdapter = null;
+                        mLayoutManager = mPagerLayoutManager;
+                        break;
+                    case LAYOUT_SCROLL_TOP_TO_BOTTOM:
+                    case LAYOUT_SCROLL_LEFT_TO_RIGHT:
+                    case LAYOUT_SCROLL_RIGHT_TO_LEFT:
+                        ensureScrollLayoutManager();
+                        mScrollLayoutManager.setMode(getScrollModeFromLayoutMode(mLayoutMode));
+                        mScrollLayoutManager.onAttach(mAdapter);
+                        mAdapter = null;
+                        mLayoutManager = mScrollLayoutManager;
+                        break;
+                    default:
+                        throw new IllegalStateException("Invalid layout mode: " + mLayoutMode);
+                }
                 break;
+            default:
+                throw new IllegalStateException("Invalid state: " + state);
         }
 
         requestFill();
     }
 
     private void detachLayoutManager() {
-        if (null == mLayoutManager) {
+        if (mLayoutManager == null) {
+            Log.w(LOG_TAG, "No LayoutManager attached.");
             return;
         }
 
-        mIndex = mLayoutManager.getInternalCurrentIndex();
         mAdapter = mLayoutManager.onDetach();
         mLayoutManager = null;
     }
 
-    @SuppressWarnings("deprecation")
-    private void onAttachToRootInternal() {
-        if (null == mPageTextTexture) {
-            mPageTextTexture = ImageMovableTextTexture.create(mPageTextTypeface,
-                    mPageTextSize, mPageTextColor,
+
+    @Override
+    public void onAttachToRoot(GLRoot root) {
+        super.onAttachToRoot(root);
+        mEdgeView.onAttachToRoot(root);
+
+        if (mIndexTextTexture == null) {
+            mIndexTextTexture = ImageMovableTextTexture.create(mIndexTextTypeface,
+                    mIndexTextSize, mIndexTextColor,
                     new char[]{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'});
         }
         attachLayoutManager();
     }
 
     @Override
-    public void onAttachToRoot(GLRoot root) {
-        super.onAttachToRoot(root);
-        mEdgeView.onAttachToRoot(root);
-        postMethod(METHOD_ON_ATTACH_TO_ROOT);
-    }
-
-    @Override
     public void onDetachFromRoot() {
-        // When detached, render() will not be called. So do it here
         detachLayoutManager();
-        if (null != mPageTextTexture) {
-            mPageTextTexture.recycle();
-            mPageTextTexture = null;
+        if (mIndexTextTexture != null) {
+            mIndexTextTexture.recycle();
+            mIndexTextTexture = null;
         }
 
         super.onDetachFromRoot();
         mEdgeView.onDetachFromRoot();
     }
 
+    /**
+     * Return value itself if it is one for {@link #LAYOUT_PAGER_LEFT_TO_RIGHT},
+     * {@link #LAYOUT_PAGER_RIGHT_TO_LEFT}, {@link #LAYOUT_SCROLL_TOP_TO_BOTTOM},
+     * {@link #LAYOUT_SCROLL_LEFT_TO_RIGHT} and {@link #LAYOUT_PAGER_RIGHT_TO_LEFT},
+     * otherwise return {@link #LAYOUT_PAGER_LEFT_TO_RIGHT}.
+     */
     @LayoutMode
-    public static int sanitizeLayoutMode(int layoutMode) {
-        if (layoutMode != GalleryView.LAYOUT_LEFT_TO_RIGHT &&
-                layoutMode != GalleryView.LAYOUT_RIGHT_TO_LEFT &&
-                layoutMode != GalleryView.LAYOUT_TOP_TO_BOTTOM) {
-            return GalleryView.LAYOUT_LEFT_TO_RIGHT;
+    public static int sanitizeLayoutMode(int value) {
+        if (value != LAYOUT_PAGER_LEFT_TO_RIGHT &&
+                value != LAYOUT_PAGER_RIGHT_TO_LEFT &&
+                value != LAYOUT_SCROLL_TOP_TO_BOTTOM &&
+                value != LAYOUT_SCROLL_LEFT_TO_RIGHT &&
+                value != LAYOUT_SCROLL_RIGHT_TO_LEFT) {
+            return LAYOUT_PAGER_LEFT_TO_RIGHT;
         } else {
-            return layoutMode;
+            return value;
         }
     }
 
+    /**
+     * Return value itself if it is one for {@link #SCALE_ORIGIN},
+     * {@link #SCALE_FIT_WIDTH}, {@link #SCALE_FIT_HEIGHT},
+     * {@link #SCALE_FIT} and {@link #SCALE_FIXED},
+     * otherwise return {@link #SCALE_FIT}.
+     */
     @ScaleMode
-    public static int sanitizeScaleMode(int scaleMode) {
-        if (scaleMode != GalleryView.SCALE_ORIGIN &&
-                scaleMode != GalleryView.SCALE_FIT_WIDTH &&
-                scaleMode != GalleryView.SCALE_FIT_HEIGHT &&
-                scaleMode != GalleryView.SCALE_FIT &&
-                scaleMode != GalleryView.SCALE_FIXED) {
-            return GalleryView.SCALE_FIT;
+    public static int sanitizeScaleMode(int value) {
+        if (value != SCALE_ORIGIN &&
+                value != SCALE_FIT_WIDTH &&
+                value != SCALE_FIT_HEIGHT &&
+                value != SCALE_FIT &&
+                value != SCALE_FIXED) {
+            return SCALE_FIT;
         } else {
-            return scaleMode;
+            return value;
         }
     }
 
+    /**
+     * Return value itself if it is one for {@link #START_POSITION_TOP_LEFT},
+     * {@link #START_POSITION_TOP_RIGHT}, {@link #START_POSITION_BOTTOM_LEFT},
+     * {@link #START_POSITION_BOTTOM_RIGHT} and {@link #START_POSITION_CENTER},
+     * otherwise return {@link #START_POSITION_TOP_LEFT}.
+     */
     @StartPosition
-    public static int sanitizeStartPosition(int startPosition) {
-        if (startPosition != GalleryView.START_POSITION_TOP_LEFT &&
-                startPosition != GalleryView.START_POSITION_TOP_RIGHT &&
-                startPosition != GalleryView.START_POSITION_BOTTOM_LEFT &&
-                startPosition != GalleryView.START_POSITION_BOTTOM_RIGHT &&
-                startPosition != GalleryView.START_POSITION_CENTER) {
-            return GalleryView.START_POSITION_TOP_LEFT;
+    public static int sanitizeStartPosition(int value) {
+        if (value != START_POSITION_TOP_LEFT &&
+                value != START_POSITION_TOP_RIGHT &&
+                value != START_POSITION_BOTTOM_LEFT &&
+                value != START_POSITION_BOTTOM_RIGHT &&
+                value != START_POSITION_CENTER) {
+            return START_POSITION_TOP_LEFT;
         } else {
-            return startPosition;
+            return value;
         }
     }
 
+    @LayoutMode
     public int getLayoutMode() {
         return mLayoutMode;
     }
 
-    public int getCurrentIndex() {
-        return mCurrentIndex.get();
+    @ScaleMode
+    public int getScaleMode() {
+        return mScaleMode;
+    }
+
+    @StartPosition
+    public int getStartPosition() {
+        return mStartPosition;
     }
 
     @Override
@@ -471,7 +458,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         requestFill();
     }
 
-    public void requestFill() {
+    void requestFill() {
         if (mEnableRequestFill) {
             mRequestFill = true;
             if (!mWillFill) {
@@ -499,128 +486,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         return mEmptyString;
     }
 
-    boolean isFirstScroll() {
-        boolean firstScroll = mFirstScroll;
-        mFirstScroll = false;
-        return firstScroll;
-    }
-
-    // Make sure method run in render thread to ensure thread safe
-    private void postMethod(int method, Object... args) {
-        synchronized (this) {
-            mMethodList.add(method);
-            mArgsList.add(args);
-        }
-
-        invalidate();
-    }
-
-    public void setLayoutMode(@LayoutMode int layoutMode) {
-        postMethod(METHOD_SET_LAYOUT_MODE, layoutMode);
-    }
-
-    public void setCurrentPage(int page) {
-        postMethod(METHOD_SET_CURRENT_PAGE, page);
-    }
-
-    public void pageLeft() {
-        postMethod(METHOD_PAGE_LEFT);
-    }
-
-    public void pageRight() {
-        postMethod(METHOD_PAGE_RIGHT);
-    }
-
-    public void setScaleMode(int scaleMode) {
-        postMethod(METHOD_SET_SCALE_MODE, scaleMode);
-    }
-
-    public void setStartPosition(int startPosition) {
-        postMethod(METHOD_SET_START_POSITION, startPosition);
-    }
-
-    @Override
-    public boolean onSingleTapUp(float x, float y) {
-        postMethod(METHOD_ON_SINGLE_TAP_UP, x, y);
-        return true;
-    }
-
-    @Override
-    public boolean onSingleTapConfirmed(float x, float y) {
-        postMethod(METHOD_ON_SINGLE_TAP_CONFIRMED, x, y);
-        return true;
-    }
-
-    @Override
-    public boolean onDoubleTap(float x, float y) {
-        postMethod(METHOD_ON_DOUBLE_TAP, x, y);
-        return true;
-    }
-
-    @Override
-    public boolean onDoubleTapConfirmed(float x, float y) {
-        postMethod(METHOD_ON_DOUBLE_TAP_CONFIRMED, x, y);
-        return true;
-    }
-
-    @Override
-    public void onLongPress(float x, float y) {
-        if (mLayoutManager != null && !mLayoutManager.isTapOrPressEnable()) {
-            return;
-        }
-
-        postMethod(METHOD_ON_LONG_PRESS, x, y);
-    }
-
-    @Override
-    public boolean onScroll(float dx, float dy, float totalX, float totalY, float x, float y) {
-        postMethod(METHOD_ON_SCROLL, dx, dy, totalX, totalY, x, y);
-        return true;
-    }
-
-    @Override
-    public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-        postMethod(METHOD_ON_FLING, velocityX, velocityY);
-        return true;
-    }
-
-    @Override
-    public boolean onScaleBegin(float focusX, float focusY) {
-        postMethod(METHOD_ON_SCALE_BEGIN, focusX, focusY);
-        return true;
-    }
-
-    @Override
-    public boolean onScale(float focusX, float focusY, float scale) {
-        postMethod(METHOD_ON_SCALE, focusX, focusY, scale);
-        return true;
-    }
-
-    @Override
-    public void onScaleEnd() {
-        postMethod(METHOD_ON_SCALE_END);
-    }
-
-    @Override
-    public void onDown(float x, float y) {
-        postMethod(METHOD_ON_DOWN, x, y);
-    }
-
-    @Override
-    public void onUp() {
-        postMethod(METHOD_ON_UP);
-    }
-
-    @Override
-    public void onPointerDown(float x, float y) {
-        postMethod(METHOD_ON_POINTER_DOWN, x, y);
-    }
-
-    @Override
-    public void onPointerUp() {
-        postMethod(METHOD_ON_POINTER_UP);
-    }
-
     @Override
     protected void onLayout(boolean changeSize, int left, int top, int right, int bottom) {
         mEdgeView.layout(left, top, right, bottom);
@@ -628,8 +493,8 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         fill();
 
         if (changeSize) {
-            int width = right - left;
-            int height = bottom - top;
+            final int width = right - left;
+            final int height = bottom - top;
             mLeftArea.set((int) (LEFT_AREA[0] * width), (int) (LEFT_AREA[1] * height),
                     (int) (LEFT_AREA[2] * width), (int) (LEFT_AREA[3] * height));
             mRightArea.set((int) (RIGHT_AREA[0] * width), (int) (RIGHT_AREA[1] * height),
@@ -641,71 +506,139 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         }
     }
 
-    @RenderThread
-    public void onDataChanged() {
-        GalleryUtils.assertInRenderThread();
+    private void onNotifyStateChanged() {
+        // Update LayoutManager
+        if (mLayoutManager != null) {
+            detachLayoutManager();
+            attachLayoutManager();
+        }
+    }
 
-        if (mLayoutManager != null){
+    private void notifyDataChanged() {
+        if (mLayoutManager != null) {
             mLayoutManager.onDataChanged();
         }
     }
 
-    private void onSingleTapUpInternal(float x, float y) {
-    }
-
-    private void onSingleTapConfirmedInternal(float x, float y) {
-        if (mLayoutManager == null || !mLayoutManager.isTapOrPressEnable()) {
+    void setLayoutModeInternal(int layoutMode) {
+        if (mLayoutMode == layoutMode) {
             return;
         }
-
-        if (mSliderArea.contains((int) x, (int) y)) {
-            if (mListener != null) {
-                mListener.onTapSliderArea();
-            }
-        } else if (mMenuArea.contains((int) x, (int) y)) {
-            if (mListener != null) {
-                mListener.onTapMenuArea();
-            }
-        } else if (mLeftArea.contains((int) x, (int) y)) {
-            mLayoutManager.onPageLeft();
-        } else if (mRightArea.contains((int) x, (int) y)) {
-            mLayoutManager.onPageRight();
-        }
-    }
-
-    private void onDoubleTapInternal(float x, float y) {
-    }
-
-    private void onDoubleTapConfirmedInternal(float x, float y) {
-        if (mScale) {
-            return;
-        }
-
-        if (mLayoutManager != null) {
-            mLayoutManager.onDoubleTapConfirmed(x, y);
-        }
-    }
-
-    private void onLongPressInternal(float x, float y) {
-        if (mScale) {
-            return;
-        }
+        mLayoutMode = layoutMode;
 
         if (mLayoutManager == null) {
+            // onAttachToRoot has not been called
+            // or no Adapter now.
+            return;
+        }
+        if (mLayoutManager == mWaitingLayoutManager || mLayoutManager == mErrorLayoutManager) {
+            // Waiting or got error
             return;
         }
 
-        int index = mLayoutManager.getIndexUnder(x, y);
-        if (index == GalleryPageView.INVALID_INDEX) {
-            return;
+        switch (layoutMode) {
+            case LAYOUT_PAGER_LEFT_TO_RIGHT:
+            case LAYOUT_PAGER_RIGHT_TO_LEFT:
+                @PagerLayoutManager.Mode
+                final int pagerMode = getPagerModeFromLayoutMode(layoutMode);
+                if (mLayoutManager == mPagerLayoutManager) {
+                    // PagerLayoutManager already attached, just change mode
+                    mPagerLayoutManager.setMode(pagerMode);
+                } else {
+                    // Detach old LayoutManager, attach PagerLayoutManager
+                    ensurePagerLayoutManager();
+                    mPagerLayoutManager.setMode(pagerMode);
+                    mPagerLayoutManager.onAttach(mLayoutManager.onDetach());
+                    mLayoutManager = mPagerLayoutManager;
+                }
+                break;
+            case LAYOUT_SCROLL_TOP_TO_BOTTOM:
+            case LAYOUT_SCROLL_LEFT_TO_RIGHT:
+            case LAYOUT_SCROLL_RIGHT_TO_LEFT:
+                @ScrollLayoutManager.Mode
+                final int scrollMode = getScrollModeFromLayoutMode(layoutMode);
+                if (mLayoutManager == mScrollLayoutManager) {
+                    // ScrollLayoutManager already attached, just change mode
+                    mScrollLayoutManager.setMode(scrollMode);
+                } else {
+                    // Detach old LayoutManager, attach ScrollLayoutManager
+                    ensureScrollLayoutManager();
+                    mScrollLayoutManager.setMode(scrollMode);
+                    mScrollLayoutManager.onAttach(mLayoutManager.onDetach());
+                    mLayoutManager = mScrollLayoutManager;
+                }
+                break;
+            default:
+                throw new IllegalStateException("Invalid layout mode: " + mLayoutMode);
         }
 
-        if (mListener != null) {
-            mListener.onLongPressPage(index);
+        requestFill();
+    }
+
+    void setScaleModeInternal(int scaleMode) {
+        mScaleMode = scaleMode;
+        if (mPagerLayoutManager != null) {
+            mPagerLayoutManager.setScaleMode(scaleMode);
         }
     }
 
-    private void onScrollInternal(float dx, float dy, float totalX, float totalY, float x, float y) {
+    void setStartPositionInternal(int startPosition) {
+        mStartPosition = startPosition;
+        if (mPagerLayoutManager != null) {
+            mPagerLayoutManager.setStartPosition(startPosition);
+        }
+    }
+
+    void pageNextInternal() {
+        if (mLayoutManager != null) {
+            mLayoutManager.onPageNext();
+        }
+    }
+
+    void pagePreviousInternal() {
+        if (mLayoutManager != null) {
+            mLayoutManager.onPagePrevious();
+        }
+    }
+
+    void pageToIdInternal(int id) {
+        if (mLayoutManager != null) {
+            mLayoutManager.onPageToId(id);
+        }
+    }
+
+    void scaleToNextLevelInternal(float x, float y) {
+        if (mLayoutManager != null) {
+            mLayoutManager.onScaleToNextLevel(x, y);
+        }
+    }
+
+    void onSingleTapUpInternal(float x, float y) {}
+
+    void onSingleTapConfirmedInternal(float x, float y) {
+        if ((mLayoutManager == null || mLayoutManager.isTouchActionValid())
+                && mListener != null) {
+            mListener.onClick(x, y);
+        }
+    }
+
+    void onDoubleTapInternal(float x, float y) {}
+
+    void onDoubleTapConfirmedInternal(float x, float y) {
+        if (!mScale && (mLayoutManager == null || mLayoutManager.isTouchActionValid())
+                && mListener != null) {
+            mListener.onDoubleClick(x, y);
+        }
+    }
+
+    void onLongPressInternal(float x, float y) {
+        if (!mScale && (mLayoutManager == null || mLayoutManager.isTouchActionValid())
+                && mListener != null) {
+            mListener.onLongClick(x, y);
+        }
+    }
+
+    void onScrollInternal(float dx, float dy, float totalX, float totalY, float x, float y) {
         if (mScale) {
             return;
         }
@@ -716,17 +649,17 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         }
     }
 
-    private void onFlingInternal(float velocityX, float velocityY) {
+    void onFlingInternal(float velocityX, float velocityY) {
         if (mLayoutManager != null) {
             mLayoutManager.onFling(velocityX, velocityY);
         }
     }
 
-    private void onScaleBeginInternal(float focusX, float focusY) {
+    void onScaleBeginInternal(float focusX, float focusY) {
         onScaleInternal(focusX, focusY, 1.0f);
     }
 
-    private void onScaleInternal(float focusX, float focusY, float scale) {
+    void onScaleInternal(float focusX, float focusY, float scale) {
         if (mScroll || (mLayoutManager != null && !mLayoutManager.canScale())) {
             return;
         }
@@ -737,115 +670,29 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         }
     }
 
-    private void onScaleEndInternal() {
-    }
+    void onScaleEndInternal() {}
 
-    private void onDownInternal(float x, float y) {
+    void onDownInternal(float x, float y) {
         mScale = false;
         mScroll = false;
-        mFirstScroll = true;
         if (mLayoutManager != null) {
             mLayoutManager.onDown();
         }
     }
 
-    private void onUpInternal() {
+    void onUpInternal() {
         if (mLayoutManager != null) {
             mLayoutManager.onUp();
         }
     }
 
-    private void onPointerDownInternal(float x, float y) {
+    void onPointerDownInternal(float x, float y) {
         if (!mScroll && (mLayoutManager != null && mLayoutManager.canScale())) {
             mScale = true;
         }
     }
 
-    private void onPointerUpInternal() {
-    }
-
-    private void setLayoutModeInternal(int layoutMode) {
-        if (mLayoutMode == layoutMode) {
-            return;
-        }
-        mLayoutMode = layoutMode;
-
-        if (mLayoutManager == null) {
-            return;
-        }
-
-        switch (mLayoutMode) {
-            case LAYOUT_LEFT_TO_RIGHT:
-                if (mLayoutManager == mPagerLayoutManager) {
-                    // mPagerLayoutManager already attached, just change mode
-                    mPagerLayoutManager.setMode(PagerLayoutManager.MODE_LEFT_TO_RIGHT);
-                } else {
-                    ensurePagerLayoutManager();
-                    mPagerLayoutManager.setMode(PagerLayoutManager.MODE_LEFT_TO_RIGHT);
-                    int index = mLayoutManager.getInternalCurrentIndex();
-                    mPagerLayoutManager.onAttach(mLayoutManager.onDetach());
-                    mPagerLayoutManager.setCurrentIndex(index);
-                    mLayoutManager = mPagerLayoutManager;
-                }
-                break;
-            case LAYOUT_RIGHT_TO_LEFT:
-                if (mLayoutManager == mPagerLayoutManager) {
-                    // mPagerLayoutManager already attached, just change mode
-                    mPagerLayoutManager.setMode(PagerLayoutManager.MODE_RIGHT_TO_LEFT);
-                } else {
-                    ensurePagerLayoutManager();
-                    mPagerLayoutManager.setMode(PagerLayoutManager.MODE_RIGHT_TO_LEFT);
-                    int index = mLayoutManager.getInternalCurrentIndex();
-                    mPagerLayoutManager.onAttach(mLayoutManager.onDetach());
-                    mPagerLayoutManager.setCurrentIndex(index);
-                    mLayoutManager = mPagerLayoutManager;
-                }
-                break;
-            case LAYOUT_TOP_TO_BOTTOM:
-                ensureScrollLayoutManager();
-                int index = mLayoutManager.getInternalCurrentIndex();
-                mScrollLayoutManager.onAttach(mLayoutManager.onDetach());
-                mScrollLayoutManager.setCurrentIndex(index);
-                mLayoutManager = mScrollLayoutManager;
-                break;
-        }
-
-        requestFill();
-    }
-
-    private void setCurrentPageInternal(int page) {
-        if (mLayoutManager != null) {
-            mLayoutManager.setCurrentIndex(page);
-        } else {
-            mIndex = page;
-        }
-    }
-
-    private void pageLeftInternal() {
-        if (mLayoutManager != null) {
-            mLayoutManager.onPageLeft();
-        }
-    }
-
-    private void pageRightInternal() {
-        if (mLayoutManager != null) {
-            mLayoutManager.onPageRight();
-        }
-    }
-
-    private void setScaleModeInternal(int scaleMode) {
-        mScaleMode = scaleMode;
-        if (mPagerLayoutManager != null) {
-            mPagerLayoutManager.setScaleMode(scaleMode);
-        }
-    }
-
-    private void setStartPositionInternal(int startPosition) {
-        mStartPosition = startPosition;
-        if (mPagerLayoutManager != null) {
-            mPagerLayoutManager.setStartPosition(startPosition);
-        }
-    }
+    void onPointerUpInternal() {}
 
     @RenderThread
     void forceFill() {
@@ -870,107 +717,15 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         mRequestFill = false;
     }
 
-    private void dispatchMethod() {
-        List<Integer> methodListTemp = mMethodListTemp;
-        List<Object[]> argsListTemp = mArgsListTemp;
-
-        synchronized (this) {
-            if (mMethodList.isEmpty()) {
-                return;
-            }
-
-            methodListTemp.addAll(mMethodList);
-            argsListTemp.addAll(mArgsList);
-            mMethodList.clear();
-            mArgsList.clear();
-        }
-
-        for (int i = 0, n = methodListTemp.size(); i < n; i++) {
-            int method = methodListTemp.get(i);
-            Object[] args = argsListTemp.get(i);
-
-            switch (method) {
-                case METHOD_ON_SINGLE_TAP_UP:
-                    onSingleTapUpInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_SINGLE_TAP_CONFIRMED:
-                    onSingleTapConfirmedInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_DOUBLE_TAP:
-                    onDoubleTapInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_DOUBLE_TAP_CONFIRMED:
-                    onDoubleTapConfirmedInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_LONG_PRESS:
-                    onLongPressInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_SCROLL:
-                    onScrollInternal((Float) args[0], (Float) args[1], (Float) args[2],
-                            (Float) args[3], (Float) args[4], (Float) args[5]);
-                    break;
-                case METHOD_ON_FLING:
-                    onFlingInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_SCALE_BEGIN:
-                    onScaleBeginInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_SCALE:
-                    onScaleInternal((Float) args[0], (Float) args[1], (Float) args[2]);
-                    break;
-                case METHOD_ON_SCALE_END:
-                    onScaleEndInternal();
-                    break;
-                case METHOD_ON_DOWN:
-                    onDownInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_UP:
-                    onUpInternal();
-                    break;
-                case METHOD_ON_POINTER_DOWN:
-                    onPointerDownInternal((Float) args[0], (Float) args[1]);
-                    break;
-                case METHOD_ON_POINTER_UP:
-                    onPointerUpInternal();
-                    break;
-                case METHOD_SET_LAYOUT_MODE:
-                    setLayoutModeInternal((Integer) args[0]);
-                    break;
-                case METHOD_SET_CURRENT_PAGE:
-                    setCurrentPageInternal((Integer) args[0]);
-                    break;
-                case METHOD_PAGE_LEFT:
-                    pageLeftInternal();
-                    break;
-                case METHOD_PAGE_RIGHT:
-                    pageRightInternal();
-                    break;
-                case METHOD_SET_SCALE_MODE:
-                    setScaleModeInternal((Integer) args[0]);
-                    break;
-                case METHOD_SET_START_POSITION:
-                    setStartPositionInternal((Integer) args[0]);
-                    break;
-                case METHOD_ON_ATTACH_TO_ROOT:
-                    onAttachToRootInternal();
-                    break;
-            }
-        }
-
-        methodListTemp.clear();
-        argsListTemp.clear();
-    }
 
     @Override
     public void render(GLCanvas canvas) {
         mWillFill = true;
-        int oldCurrentIndex = mCurrentIndex.get();
 
         // Dispatch method
-        dispatchMethod();
+        mPostman.dispatchMethod();
 
-        long time = AnimationTime.get();
-        if (mLayoutManager != null && mLayoutManager.onUpdateAnimation(time)) {
+        if (mLayoutManager != null && mLayoutManager.onUpdateAnimation(AnimationTime.get())) {
             invalidate();
         }
 
@@ -980,23 +735,24 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         super.render(canvas);
         mEdgeView.render(canvas);
 
-        int newCurrentIndex;
+        final int newCurrentId;
         if (mLayoutManager != null) {
-            newCurrentIndex = mLayoutManager.getCurrentIndex();
+            newCurrentId = mLayoutManager.getCurrentId();
         } else {
-            newCurrentIndex = GalleryPageView.INVALID_INDEX;
+            newCurrentId = Adapter.INVALID_ID;
         }
-        mCurrentIndex.lazySet(newCurrentIndex);
 
-        if (oldCurrentIndex != newCurrentIndex && mListener != null) {
-            mListener.onUpdateCurrentIndex(newCurrentIndex);
+        if (mCurrentId != newCurrentId) {
+            mCurrentId = newCurrentId;
+            if (mListener != null) {
+                mListener.onUpdateCurrentIndex(newCurrentId);
+            }
         }
     }
 
-    @RenderThread
-    public GalleryPageView findPageByIndex(int id) {
+    public GalleryPageView findPageById(int id) {
         if (mLayoutManager != null) {
-            return mLayoutManager.findPageByIndex(id);
+            return mLayoutManager.findPageById(id);
         } else {
             return null;
         }
@@ -1005,7 +761,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     GalleryPageView obtainPage() {
         GalleryPageView page = mGalleryPageViewPool.pop();
         if (page == null) {
-            page = new GalleryPageView(mPageTextTexture,
+            page = new GalleryPageView(mIndexTextTexture, this,
                     mProgressColor, mBackgroundColor, mProgressSize,
                     mPageMinHeight, mPageInfoInterval);
         }
@@ -1016,93 +772,141 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         mGalleryPageViewPool.push(page);
     }
 
-    /**
-     * Indeterminate GLProgressView
-     */
-    GLProgressView obtainProgress() {
-        GLProgressView progress;
-        if (mProgressCache != null) {
-            progress = mProgressCache;
-            mProgressCache = null;
-        } else {
-            progress = new GLProgressView();
-            progress.setColor(mProgressColor);
-            progress.setBgColor(mBackgroundColor);
-            progress.setIndeterminate(true);
-            progress.setMinimumWidth(mProgressSize);
-            progress.setMinimumHeight(mProgressSize);
-        }
-        return progress;
-    }
-
-    /**
-     * @param progress Indeterminate GLProgressView
-     */
-    void releaseProgress(GLProgressView progress) {
-        mProgressCache = progress;
-    }
-
-    GLTextureView obtainErrorView() {
-        GLTextureView errorView;
-        if (mErrorViewCache != null) {
-            errorView = mErrorViewCache;
-            mErrorViewCache = null;
-        } else {
-            errorView = new GLTextureView();
-        }
-        return errorView;
-    }
-
-    void unbindErrorView(GLTextureView errorView) {
-        Texture texture = errorView.getTexture();
+    @Override
+    public void unbindText(GLTextureView view) {
+        final Texture texture = view.getTexture();
         if (texture != null) {
-            errorView.setTexture(null);
+            view.setTexture(null);
             if (texture instanceof BasicTexture) {
                 ((BasicTexture) texture).recycle();
             }
         }
     }
 
-    void bindErrorView(GLTextureView errorView, String error) {
-        unbindErrorView(errorView);
-
-        Texture texture = StringTexture.newInstance(error, mErrorTextSize, mErrorTextColor);
-        errorView.setTexture(texture);
-    }
-
-    void releaseErrorView(GLTextureView errorView) {
-        unbindErrorView(errorView);
-        mErrorViewCache = errorView;
+    @Override
+    public void bindText(GLTextureView view, String str) {
+        final Texture texture = StringTexture.newInstance(str, mErrorTextSize, mErrorTextColor);
+        view.setTexture(texture);
     }
 
     public static abstract class Adapter {
 
+        private static final String LOG_TAG = Adapter.class.getSimpleName();
+
+        @IntDef({STATE_WAIT, STATE_READY, STATE_EMPTY, STATE_ERROR})
+        @Retention(RetentionPolicy.SOURCE)
+        public @interface State {}
+
+        public static final int INVALID_ID = GLView.NO_ID;
+
+        public static final int STATE_WAIT = 0;
+        public static final int STATE_READY = 1;
+        public static final int STATE_EMPTY = 2;
+        public static final int STATE_ERROR = 3;
+
+        @Nullable
         protected GalleryView mGalleryView;
 
-        private void setGalleryView(@NonNull GalleryView galleryView) {
+        private void setGalleryView(@Nullable GalleryView galleryView) {
             mGalleryView = galleryView;
         }
 
-        public void bind(GalleryPageView view, int index) {
-            onBind(view, index);
-            view.setIndex(index);
+        public boolean isAttached() {
+            return mGalleryView != null;
         }
 
-        public void unbind(GalleryPageView view) {
-            onUnbind(view, view.getIndex());
-            view.setIndex(GalleryPageView.INVALID_INDEX);
+        /**
+         * Move current position to next.
+         * Throw IllegalStateException if not next.
+         *
+         * @see #hasNext()
+         */
+        public abstract void next();
+
+        /**
+         * Move current position to previous.
+         * Throw IllegalStateException if not previous.
+         *
+         * @see #hasPrevious()
+         */
+        public abstract void previous();
+
+        /**
+         * Return true if has next position.
+         *
+         * @see #next()
+         */
+        public abstract boolean hasNext();
+
+        /**
+         * Return true if has previous position.
+         *
+         * @see #previous()
+         */
+        public abstract boolean hasPrevious();
+
+        /**
+         * Return an id to represent current position.
+         * The id must be unique.
+         */
+        public abstract int getCurrentId();
+
+        /**
+         * Move current position to where the id represents.
+         * Return {@code false} if the id is invalid.
+         */
+        protected abstract boolean setCurrentId(int id);
+
+        /**
+         * Return {@code true} if this id represents the first page.
+         */
+        public abstract boolean isHead(int id);
+
+        /**
+         * Return {@code true} if this id represents the last page.
+         */
+        public abstract boolean isTail(int id);
+
+        void bind(GalleryPageView view) {
+            view.setId(getCurrentId());
+            onBind(view);
         }
 
-        public abstract void onBind(GalleryPageView view, int index);
+        void unbind(GalleryPageView view, int id) {
+            onUnbind(view, id);
+            view.setId(INVALID_ID);
+        }
 
-        public abstract void onUnbind(GalleryPageView view, int index);
+        public abstract void onBind(GalleryPageView view);
+
+        public abstract void onUnbind(GalleryPageView view, int id);
 
         /**
          * @return Null for no error
          */
         public abstract String getError();
 
-        public abstract int size();
+        /**
+         * Return current state.
+         */
+        @State
+        public abstract int getState();
+
+        public void notifyStateChanged() {
+            if (mGalleryView != null) {
+                mGalleryView.onNotifyStateChanged();
+            } else {
+                Log.e(LOG_TAG, "It is not attached to any GalleryView.");
+            }
+        }
+
+        public void notifyDataChanged() {
+            if (mGalleryView != null) {
+                mGalleryView.notifyDataChanged();
+            } else {
+                Log.e(LOG_TAG, "It is not attached to any GalleryView.");
+            }
+        }
     }
 
     public static abstract class LayoutManager {
@@ -1113,7 +917,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
             mGalleryView = galleryView;
         }
 
-        public abstract void onAttach(Adapter iterator);
+        public abstract void onAttach(Adapter adapter);
 
         public abstract Adapter onDetach();
 
@@ -1123,9 +927,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         public abstract void onUp();
 
-        public abstract void onDoubleTapConfirmed(float x, float y);
-
-        public abstract void onLongPress(float x, float y);
+        public abstract void onScaleToNextLevel(float x, float y);
 
         public abstract void onScroll(float dx, float dy, float totalX, float totalY, float x, float y);
 
@@ -1135,53 +937,187 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         public abstract void onScale(float focusX, float focusY, float scale);
 
-        public abstract boolean onUpdateAnimation(long time);
+        public abstract void onPageNext();
 
-        public abstract void onDataChanged();
+        public abstract void onPagePrevious();
 
-        public abstract void onPageLeft();
-
-        public abstract void onPageRight();
-
-        public abstract boolean isTapOrPressEnable();
-
-        public abstract GalleryPageView findPageByIndex(int index);
+        public abstract void onPageToId(int id);
 
         /**
-         * @return {@link GalleryPageView#INVALID_INDEX} for error
+         * {@code true} for call {@link #invalidate()}.
+         *
+         * @param time Current animation time
          */
-        public abstract int getCurrentIndex();
+        public abstract boolean onUpdateAnimation(long time);
 
-        public abstract void setCurrentIndex(int index);
+        public abstract boolean isTouchActionValid();
 
-        public abstract int getIndexUnder(float x, float y);
+        public abstract GalleryPageView findPageById(int id);
 
-        abstract int getInternalCurrentIndex();
+        public abstract int getIdUnder(float x, float y);
 
-        protected void placeCenter(GLView view) {
-            int spec = GLView.MeasureSpec.makeMeasureSpec(GLView.LayoutParams.WRAP_CONTENT,
-                    GLView.LayoutParams.WRAP_CONTENT);
-            view.measure(spec, spec);
-            int viewWidth = view.getMeasuredWidth();
-            int viewHeight = view.getMeasuredHeight();
-            int viewLeft = mGalleryView.getWidth() / 2 - viewWidth / 2;
-            int viewTop = mGalleryView.getHeight() / 2 - viewHeight / 2;
-            view.layout(viewLeft, viewTop, viewLeft + viewWidth, viewTop + viewHeight);
-        }
+        public abstract int getCurrentId();
+
+        public abstract void onDataChanged();
     }
 
     public interface Listener {
 
-        @RenderThread
         void onUpdateCurrentIndex(int index);
 
-        @RenderThread
-        void onTapSliderArea();
+        void onClick(float x, float y);
 
-        @RenderThread
-        void onTapMenuArea();
+        void onDoubleClick(float x, float y);
 
-        @RenderThread
-        void onLongPressPage(int index);
+        void onLongClick(float x, float y);
+    }
+
+    ////////////////////////////////////////
+    //
+    // Non render thread methods.
+    //
+    // Must use Postman to post it to render thread.
+    //
+    ////////////////////////////////////////
+
+    /**
+     * Set layout mode of the {@code GalleryView}.
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void setLayoutMode(@LayoutMode int layoutMode) {
+        mPostman.postMethod(Postman.METHOD_SET_LAYOUT_MODE, layoutMode);
+    }
+
+    /**
+     * Set scale mode of the {@code GalleryView}.
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void setScaleMode(@ScaleMode int scaleMode) {
+        mPostman.postMethod(Postman.METHOD_SET_SCALE_MODE, scaleMode);
+    }
+
+    /**
+     * Set start position of the {@code GalleryView}.
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void setStartPosition(@StartPosition int startPosition) {
+        mPostman.postMethod(Postman.METHOD_SET_START_POSITION, startPosition);
+    }
+
+    /**
+     * Turn to next page.
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void pageNext() {
+        mPostman.postMethod(Postman.METHOD_PAGE_NEXT);
+    }
+
+    /**
+     * Turn to previous page
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void pagePrevious() {
+        mPostman.postMethod(Postman.METHOD_PAGE_PREVIOUS);
+    }
+
+    /**
+     * Go to the page that this id represent.
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void pageToId(long id) {
+        mPostman.postMethod(Postman.METHOD_PAGE_TO_ID, id);
+    }
+
+    /**
+     * Set current scale to next level.
+     * <p>
+     * It can be called in UI thread.
+     */
+    public void scaleToNextLevel(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_SCALE_TO_NEXT_LEVEL, x, y);
+    }
+
+    @Override
+    public boolean onSingleTapUp(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_SINGLE_TAP_UP, x, y);
+        return true;
+    }
+
+    @Override
+    public boolean onSingleTapConfirmed(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_SINGLE_TAP_CONFIRMED, x, y);
+        return true;
+    }
+
+    @Override
+    public boolean onDoubleTap(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_DOUBLE_TAP, x, y);
+        return true;
+    }
+
+    @Override
+    public boolean onDoubleTapConfirmed(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_DOUBLE_TAP_CONFIRMED, x, y);
+        return true;
+    }
+
+    @Override
+    public void onLongPress(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_LONG_PRESS, x, y);
+    }
+
+    @Override
+    public boolean onScroll(float dx, float dy, float totalX, float totalY, float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_SCROLL, dx, dy, totalX, totalY, x, y);
+        return true;
+    }
+
+    @Override
+    public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+        mPostman.postMethod(Postman.METHOD_ON_FLING, velocityX, velocityY);
+        return true;
+    }
+
+    @Override
+    public boolean onScaleBegin(float focusX, float focusY) {
+        mPostman.postMethod(Postman.METHOD_ON_SCALE_BEGIN, focusX, focusY);
+        return true;
+    }
+
+    @Override
+    public boolean onScale(float focusX, float focusY, float scale) {
+        mPostman.postMethod(Postman.METHOD_ON_SCALE, focusX, focusY, scale);
+        return true;
+    }
+
+    @Override
+    public void onScaleEnd() {
+        mPostman.postMethod(Postman.METHOD_ON_SCALE_END);
+    }
+
+    @Override
+    public void onDown(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_DOWN, x, y);
+    }
+
+    @Override
+    public void onUp() {
+        mPostman.postMethod(Postman.METHOD_ON_UP);
+    }
+
+    @Override
+    public void onPointerDown(float x, float y) {
+        mPostman.postMethod(Postman.METHOD_ON_POINTER_DOWN, x, y);
+    }
+
+    @Override
+    public void onPointerUp() {
+        mPostman.postMethod(Postman.METHOD_ON_POINTER_UP);
     }
 }
