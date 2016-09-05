@@ -71,9 +71,9 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     private int mDeltaX;
     private int mDeltaY;
     private boolean mClearKeepTop;
-    private int mKeepTopPageId = GalleryView.Adapter.INVALID_ID;
+    private long mKeepTopPageId = GalleryView.Adapter.INVALID_ID;
     private int mKeepTop = INVALID_TOP;
-    private int mFirstShownPageId = GalleryView.Adapter.INVALID_ID;
+    private long mFirstShownPageId = GalleryView.Adapter.INVALID_ID;
     private boolean mScrollUp;
     private boolean mFlingUp;
     private boolean mStopAnimationFinger;
@@ -155,7 +155,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
 
     private void removePage(@NonNull GalleryPageView page) {
         mGalleryView.removeComponent(page);
-        mAdapter.unbind(page, page.getId());
+        mAdapter.unbind(page, page.getPageId());
         mGalleryView.releasePage(page);
     }
 
@@ -189,10 +189,10 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
         return page;
     }
 
-    private GalleryPageView getPageById(List<GalleryPageView> pages, int id, boolean remove) {
+    private GalleryPageView getPageById(List<GalleryPageView> pages, long id, boolean remove) {
         for (final Iterator<GalleryPageView> iterator = pages.iterator(); iterator.hasNext();) {
             final GalleryPageView page = iterator.next();
-            if (page.getId() == id) {
+            if (page.getPageId() == id) {
                 if (remove) {
                     iterator.remove();
                 }
@@ -304,7 +304,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
         page.layout(mOffsetX, startOffset, mOffsetX + pageWidth, startOffset + page.getMeasuredHeight());
 
         // Save id
-        final int savedId = adapter.getCurrentId();
+        final long savedId = adapter.getCurrentId();
 
         // Prepare for layout up and down
         int topBound = startOffset - interval;
@@ -359,7 +359,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
 
         // Avoid space in bottom
         final boolean hasNext = adapter.hasNext();
-        adapter.setCurrentId(pages.getFirst().getId());
+        adapter.setCurrentId(pages.getFirst().getPageId());
         if (!hasNext) {
             while (true) {
                 page = pages.getLast();
@@ -462,7 +462,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
         final LinkedList<GalleryPageView> pages = mPages;
 
         // Find keep index and keep top
-        final int keepTopId;
+        final long keepTopId;
         int keepTop = INVALID_TOP;
         if (mKeepTopPageId != GalleryView.Adapter.INVALID_ID) {
             keepTopId = mKeepTopPageId;
@@ -477,7 +477,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             keepTop = mOffsetY;
             for (GalleryPageView page : pages) {
                 // Check keep page
-                if (keepTopId == page.getId()) {
+                if (keepTopId == page.getPageId()) {
                     break;
                 }
                 keepTop += page.getHeight() + mInterval;
@@ -510,7 +510,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             }
 
             if (isInScreen(page)) {
-                mFirstShownPageId = page.getId();
+                mFirstShownPageId = page.getPageId();
                 break;
             }
         }
@@ -578,7 +578,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             i++;
         }
 
-        final boolean hasNext = !mAdapter.isTail(mPages.getLast().getId());
+        final boolean hasNext = !mAdapter.isTail(mPages.getLast().getPageId());
 
         mBottomStateBottom = bottom;
         mBottomStateHasNext = hasNext;
@@ -787,7 +787,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             }
 
             if (page != null) {
-                mKeepTopPageId = page.getId();
+                mKeepTopPageId = page.getPageId();
                 mKeepTop = page.bounds().top;
 
                 mGalleryView.forceFill();
@@ -936,7 +936,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public void onPageToId(int id) {
+    public void onPageToId(long id) {
         if (mAdapter.setCurrentId(id)) {
             mKeepTopPageId = id;
             mKeepTop = INVALID_TOP;
@@ -945,7 +945,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
                 // Fix the index page
                 GalleryPageView targetPage = null;
                 for (GalleryPageView page : mPages) {
-                    if (page.getId() == id) {
+                    if (page.getPageId() == id) {
                         targetPage = page;
                         break;
                     }
@@ -984,9 +984,9 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public GalleryPageView findPageById(int id) {
+    public GalleryPageView findPageById(long id) {
         for (GalleryPageView page : mPages) {
-            if (page.getId() == id) {
+            if (page.getPageId() == id) {
                 return page;
             }
         }
@@ -994,7 +994,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public int getIdUnder(float x, float y) {
+    public long getIdUnder(float x, float y) {
         if (mPages.isEmpty()) {
             return GalleryView.Adapter.INVALID_ID;
         } else {
@@ -1002,7 +1002,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             final int intY = (int) y;
             for (GalleryPageView page : mPages) {
                 if (page.bounds().contains(intX, intY)) {
-                    return page.getId();
+                    return page.getPageId();
                 }
             }
             return GalleryView.Adapter.INVALID_ID;
@@ -1010,10 +1010,10 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public int getCurrentId() {
+    public long getCurrentId() {
         for (GalleryPageView page : mPages) {
             if (isInScreen(page)) {
-                return page.getId();
+                return page.getPageId();
             }
         }
         return GalleryView.Adapter.INVALID_ID;
@@ -1024,11 +1024,11 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
         // Pages will be all removed. Keep top can't be get for first shown page.
         // Convert mFirstShownPageId to mKeepTopPageId to make sure top keep.
         if (mFirstShownPageId != GalleryView.Adapter.INVALID_ID) {
-            final int keepTopId = mFirstShownPageId;
+            final long keepTopId = mFirstShownPageId;
             int keepTop = mOffsetY;
             for (GalleryPageView page : mPages) {
                 // Check keep page
-                if (keepTopId == page.getId()) {
+                if (keepTopId == page.getPageId()) {
                     break;
                 }
                 keepTop += page.getHeight() + mInterval;

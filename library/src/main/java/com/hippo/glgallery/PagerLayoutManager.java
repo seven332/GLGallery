@@ -184,7 +184,7 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
 
     private void removePage(@NonNull GalleryPageView page) {
         mGalleryView.removeComponent(page);
-        mAdapter.unbind(page, page.getId());
+        mAdapter.unbind(page, page.getPageId());
         mGalleryView.releasePage(page);
     }
 
@@ -272,7 +272,7 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
         final int height = galleryView.getHeight();
 
         // Save current id
-        final int savedId = adapter.getCurrentId();
+        final long savedId = adapter.getCurrentId();
 
         // Add page to gallery or remove it
         final boolean hasPrevious = adapter.hasPrevious();
@@ -653,7 +653,7 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public void onPageToId(int id) {
+    public void onPageToId(long id) {
         if (mAdapter.setCurrentId(id)) {
             // Cancel all animations
             cancelAllAnimations();
@@ -681,12 +681,12 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public GalleryPageView findPageById(int id) {
-        if (mCurrent != null && mCurrent.getId() == id) {
+    public GalleryPageView findPageById(long id) {
+        if (mCurrent != null && mCurrent.getPageId() == id) {
             return mCurrent;
-        } else if (mPrevious != null && mPrevious.getId() == id) {
+        } else if (mPrevious != null && mPrevious.getPageId() == id) {
             return mPrevious;
-        } else if (mNext != null && mNext.getId() == id) {
+        } else if (mNext != null && mNext.getPageId() == id) {
             return mNext;
         } else {
             return null;
@@ -694,7 +694,7 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public int getIdUnder(float x, float y) {
+    public long getIdUnder(float x, float y) {
         if (mCurrent == null) {
             return GalleryView.Adapter.INVALID_ID;
         } else {
@@ -702,11 +702,11 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
             final int intY = (int) y;
 
             if (mCurrent.bounds().contains(intX, intY)) {
-                return mCurrent.getId();
+                return mCurrent.getPageId();
             } else if (mPrevious != null && mPrevious.bounds().contains(intX, intY)) {
-                return mPrevious.getId();
+                return mPrevious.getPageId();
             } else if (mNext != null && mNext.bounds().contains(intX, intY)) {
-                return mNext.getId();
+                return mNext.getPageId();
             } else {
                 return GalleryView.Adapter.INVALID_ID;
             }
@@ -714,9 +714,9 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public int getCurrentId() {
+    public long getCurrentId() {
         if (mCurrent != null) {
-            return mCurrent.getId();
+            return mCurrent.getPageId();
         } else {
             return GalleryView.Adapter.INVALID_ID;
         }

@@ -99,7 +99,7 @@ abstract class StaticLayoutManager extends GalleryView.LayoutManager {
     public void onPagePrevious() {}
 
     @Override
-    public void onPageToId(int id) {}
+    public void onPageToId(long id) {}
 
     @Override
     public boolean isTouchActionValid() {
@@ -107,17 +107,17 @@ abstract class StaticLayoutManager extends GalleryView.LayoutManager {
     }
 
     @Override
-    public GalleryPageView findPageById(int id) {
+    public GalleryPageView findPageById(long id) {
         return null;
     }
 
     @Override
-    public int getIdUnder(float x, float y) {
+    public long getIdUnder(float x, float y) {
         return 0;
     }
 
     @Override
-    public int getCurrentId() {
+    public long getCurrentId() {
         return GalleryView.Adapter.INVALID_ID;
     }
 

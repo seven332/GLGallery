@@ -37,7 +37,6 @@ import com.hippo.glview.view.AnimationTime;
 import com.hippo.glview.view.GLRoot;
 import com.hippo.glview.view.GLView;
 import com.hippo.glview.widget.GLEdgeView;
-import com.hippo.glview.widget.GLProgressView;
 import com.hippo.glview.widget.GLTextureView;
 import com.hippo.yorozuya.Pool;
 
@@ -109,8 +108,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     // It make task easier for LayoutManager.
     private final GLEdgeView mEdgeView;
     private final Pool<GalleryPageView> mGalleryPageViewPool = new Pool<>(5);
-    private GLProgressView mProgressCache;
-    private GLTextureView mErrorViewCache;
 
     private final int mBackgroundColor;
     private final int mPagerInterval;
@@ -145,7 +142,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private int mStartPosition;
 
     // The id to represent current page
-    private int mCurrentId;
+    private long mCurrentId;
 
     public static class Builder {
 
@@ -735,7 +732,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         super.render(canvas);
         mEdgeView.render(canvas);
 
-        final int newCurrentId;
+        final long newCurrentId;
         if (mLayoutManager != null) {
             newCurrentId = mLayoutManager.getCurrentId();
         } else {
@@ -745,12 +742,12 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         if (mCurrentId != newCurrentId) {
             mCurrentId = newCurrentId;
             if (mListener != null) {
-                mListener.onUpdateCurrentIndex(newCurrentId);
+                mListener.onUpdateCurrentId(newCurrentId);
             }
         }
     }
 
-    public GalleryPageView findPageById(int id) {
+    public GalleryPageView findPageById(long id) {
         if (mLayoutManager != null) {
             return mLayoutManager.findPageById(id);
         } else {
@@ -797,7 +794,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         @Retention(RetentionPolicy.SOURCE)
         public @interface State {}
 
-        public static final int INVALID_ID = GLView.NO_ID;
+        public static final long INVALID_ID = -1L;
 
         public static final int STATE_WAIT = 0;
         public static final int STATE_READY = 1;
@@ -849,37 +846,39 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
          * Return an id to represent current position.
          * The id must be unique.
          */
-        public abstract int getCurrentId();
+        public abstract long getCurrentId();
 
         /**
          * Move current position to where the id represents.
          * Return {@code false} if the id is invalid.
          */
-        protected abstract boolean setCurrentId(int id);
+        protected abstract boolean setCurrentId(long id);
 
         /**
          * Return {@code true} if this id represents the first page.
          */
-        public abstract boolean isHead(int id);
+        public abstract boolean isHead(long id);
 
         /**
          * Return {@code true} if this id represents the last page.
          */
-        public abstract boolean isTail(int id);
+        public abstract boolean isTail(long id);
+
+        public abstract String idToString(long id);
 
         void bind(GalleryPageView view) {
-            view.setId(getCurrentId());
+            view.setPageId(getCurrentId());
             onBind(view);
         }
 
-        void unbind(GalleryPageView view, int id) {
+        void unbind(GalleryPageView view, long id) {
             onUnbind(view, id);
-            view.setId(INVALID_ID);
+            view.setPageId(INVALID_ID);
         }
 
         public abstract void onBind(GalleryPageView view);
 
-        public abstract void onUnbind(GalleryPageView view, int id);
+        public abstract void onUnbind(GalleryPageView view, long id);
 
         /**
          * @return Null for no error
@@ -941,7 +940,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         public abstract void onPagePrevious();
 
-        public abstract void onPageToId(int id);
+        public abstract void onPageToId(long id);
 
         /**
          * {@code true} for call {@link #invalidate()}.
@@ -952,18 +951,18 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         public abstract boolean isTouchActionValid();
 
-        public abstract GalleryPageView findPageById(int id);
+        public abstract GalleryPageView findPageById(long id);
 
-        public abstract int getIdUnder(float x, float y);
+        public abstract long getIdUnder(float x, float y);
 
-        public abstract int getCurrentId();
+        public abstract long getCurrentId();
 
         public abstract void onDataChanged();
     }
 
     public interface Listener {
 
-        void onUpdateCurrentIndex(int index);
+        void onUpdateCurrentId(long id);
 
         void onClick(float x, float y);
 

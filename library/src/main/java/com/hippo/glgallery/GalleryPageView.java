@@ -42,6 +42,8 @@ public class GalleryPageView extends GLFrameLayout {
 
     private final int mMinHeight;
 
+    private long mId = GalleryView.Adapter.INVALID_ID;
+
     public GalleryPageView(ImageMovableTextTexture pageTextTexture, TextBinder textBinder,
             int progressColor, int progressBgColor, int progressSize,
             int minHeight, int infoInterval) {
@@ -101,6 +103,14 @@ public class GalleryPageView extends GLFrameLayout {
         } else {
             return mMinHeight;
         }
+    }
+
+    public void setPageId(long id) {
+        mId = id;
+    }
+
+    public long getPageId() {
+        return mId;
     }
 
     /**

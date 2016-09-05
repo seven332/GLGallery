@@ -54,7 +54,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
     private int mSize;
     private boolean[] mClipArray;
     // mId = (mIndex << 1) || (mClipIndex ? 1 : 0)
-    private int mId;
+    private long mId;
     private int mIndex;
     // false for first one, true for second one
     private boolean mClipIndex;
@@ -107,15 +107,27 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         return index << 1;
     }
 
+    private long genId(int index, boolean clipIndex) {
+        return index << 1 | (clipIndex ? 1 : 0);
+    }
+
+    private int getIndexFromId(long id) {
+        return (int) (id >>> 1);
+    }
+
+    private boolean getClipIndexFromId(long id) {
+        return (id & 1) != 0;
+    }
+
     @Override
     public void next() {
         if (mSize <= 0 || mClipArray == null) {
             throw new IllegalStateException("Can't next, not data now");
         }
 
-        int newId = mId + 1;
-        int newIndex = newId >> 1;
-        boolean newClipIndex = (newId & 1) != 0;
+        long newId = mId + 1; // FIXME
+        int newIndex = getIndexFromId(newId);
+        boolean newClipIndex = getClipIndexFromId(newId);
 
         if (newIndex >= mSize) {
             throw new IllegalStateException("Can't next, out of range");
@@ -127,7 +139,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
                 throw new IllegalStateException("Can't next, out of range");
             }
             newClipIndex = false;
-            newId = newIndex << 1;
+            newId = genId(newIndex, false);
         }
 
         mId = newId;
@@ -141,9 +153,9 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
             throw new IllegalStateException("Can't previous, not data now");
         }
 
-        int newId = mId - 1;
-        final int newIndex = newId >> 1;
-        boolean newClipIndex = (newId & 1) != 0;
+        long newId = mId - 1;
+        final int newIndex = getIndexFromId(newId);
+        boolean newClipIndex = getClipIndexFromId(newId);
 
         if (newIndex < 0) {
             throw new IllegalStateException("Can't previous, out of range");
@@ -152,7 +164,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         // Fix clip index
         if (newClipIndex && !mClipArray[newIndex]) {
             newClipIndex = false;
-            newId = newIndex << 1;
+            newId = genId(newIndex, false);
         }
 
         mId = newId;
@@ -171,19 +183,19 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
     }
 
     @Override
-    public int getCurrentId() {
+    public long getCurrentId() {
         return mId;
     }
 
     @Override
-    protected boolean setCurrentId(int id) {
+    protected boolean setCurrentId(long id) {
         if (mSize <= 0 || mClipArray == null) {
             Log.e(LOG_TAG, "Should not call setCurrentId when data is not ready");
             return false;
         }
 
-        final int index = id >> 1;
-        final boolean clipIndex = (id & 1) != 0;
+        final int index = getIndexFromId(id);
+        final boolean clipIndex = getClipIndexFromId(id);
 
         if (index >= 0 && index < mSize && (!clipIndex || mClipArray[index])) {
             mId = id;
@@ -196,22 +208,22 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
     }
 
     @Override
-    public boolean isHead(int id) {
-        final int index = id >> 1;
-        final boolean clipIndex = (id & 1) != 0;
+    public boolean isHead(long id) {
+        final int index = getIndexFromId(id);
+        final boolean clipIndex = getClipIndexFromId(id);
         return isHead(index, clipIndex);
     }
 
     @Override
-    public boolean isTail(int id) {
-        final int index = id >> 1;
-        final boolean clipIndex = (id & 1) != 0;
+    public boolean isTail(long id) {
+        final int index = getIndexFromId(id);
+        final boolean clipIndex = getClipIndexFromId(id);
         return isTail(index, clipIndex);
     }
 
     @Override
-    public String idToString(int id) {
-        return "index = " + (id >> 1) + ", clip index = " + ((id & 1) != 0);
+    public String idToString(long id) {
+        return "index = " + getIndexFromId(id) + ", clip index = " + getClipIndexFromId(id);
     }
 
     private boolean isHead(int index, boolean clipIndex) {
@@ -245,8 +257,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
     }
 
     @Override
-    public void onUnbind(GalleryPageView view, int id) {
-        mProvider.cancelRequest(id >> 1);
+    public void onUnbind(GalleryPageView view, long id) {
+        mProvider.cancelRequest(getIndexFromId(id));
         view.clear();
     }
 
@@ -280,7 +292,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         if (mSize > 0) {
             mIndex = MathUtils.clamp(mIndex, 0, mSize);
             mClipIndex = false;
-            mId = mIndex << 1;
+            mId = genId(mIndex, false);
         }
         notifyStateChanged();
     }
@@ -292,8 +304,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
             return;
         }
 
-        final GalleryPageView page1 = findPageById(index << 1);
-        final GalleryPageView page2 = mClipArray[index] ? findPageById(index << 1 | 1) : null;
+        final GalleryPageView page1 = findPageById(genId(index, false));
+        final GalleryPageView page2 = mClipArray[index] ? findPageById(genId(index, true)) : null;
         if (page1 != null) {
             page1.showProgress(GalleryPageView.PROGRESS_INDETERMINATE, mShowIndex, index);
         }
@@ -309,8 +321,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
             return;
         }
 
-        final GalleryPageView page1 = findPageById(index << 1);
-        final GalleryPageView page2 = mClipArray[index] ? findPageById(index << 1 | 1) : null;
+        final GalleryPageView page1 = findPageById(genId(index, false));
+        final GalleryPageView page2 = mClipArray[index] ? findPageById(genId(index, true)) : null;
         if (page1 != null) {
             page1.showProgress(percent, mShowIndex, index);
         }
@@ -359,8 +371,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
         mClipArray[index] = newClip;
 
-        final GalleryPageView page1 = findPageById(index << 1);
-        final GalleryPageView page2 = newClip ? findPageById(index << 1 | 1) : null;
+        final GalleryPageView page1 = findPageById(genId(index, false));
+        final GalleryPageView page2 = mClipArray[index] ? findPageById(genId(index, true)) : null;
 
         image.addReference();
         if (page1 != null || page2 != null) {
@@ -381,8 +393,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
             return;
         }
 
-        final GalleryPageView page1 = findPageById(index << 1);
-        final GalleryPageView page2 = mClipArray[index] ? findPageById(index << 1 | 1) : null;
+        final GalleryPageView page1 = findPageById(genId(index, false));
+        final GalleryPageView page2 = mClipArray[index] ? findPageById(genId(index, true)) : null;
         if (page1 != null) {
             page1.showError(error, mShowIndex, index);
         }
@@ -398,8 +410,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
             return;
         }
 
-        final GalleryPageView page1 = findPageById(index << 1);
-        final GalleryPageView page2 = mClipArray[index] ? findPageById(index << 1 | 1) : null;
+        final GalleryPageView page1 = findPageById(genId(index, false));
+        final GalleryPageView page2 = mClipArray[index] ? findPageById(genId(index, true)) : null;
         if (page1 != null || page2 != null) {
             final ImageData image = mProvider.request(index);
             if (image != null) {
@@ -413,7 +425,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
     }
 
-    private GalleryPageView findPageById(int id) {
+    private GalleryPageView findPageById(long id) {
         return mGalleryView != null ? mGalleryView.findPageById(id) : null;
     }
 }
