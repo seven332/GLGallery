@@ -362,6 +362,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         final GalleryPageView page1 = findPageById(index << 1);
         final GalleryPageView page2 = newClip ? findPageById(index << 1 | 1) : null;
 
+        image.addReference();
         if (page1 != null || page2 != null) {
             if (page1 != null) {
                 bindView(page1, false, image);
@@ -370,6 +371,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
                 bindView(page2, true, image);
             }
         }
+        image.removeReference();
     }
 
     @Override
