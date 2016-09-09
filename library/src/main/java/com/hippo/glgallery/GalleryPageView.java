@@ -18,6 +18,9 @@ package com.hippo.glgallery;
 
 import android.graphics.Rect;
 
+import com.hippo.glview.glrenderer.BasicTexture;
+import com.hippo.glview.glrenderer.StringTexture;
+import com.hippo.glview.glrenderer.Texture;
 import com.hippo.glview.image.GLImageMovableTextView;
 import com.hippo.glview.image.ImageMovableTextTexture;
 import com.hippo.glview.image.ImageTexture;
@@ -32,23 +35,31 @@ public class GalleryPageView extends GLFrameLayout {
     public static final float PROGRESS_GONE = -1.0f;
     public static final float PROGRESS_INDETERMINATE = -2.0f;
 
-    private final TextBinder mTextBinder;
-
     private final ImageView mImage;
     private final GLLinearLayout mInfo;
-    private final GLImageMovableTextView mPage;
-    private final GLTextureView mError;
+    private final GLImageMovableTextView mIndex;
+    private final GLTextureView mText;
     private final GLProgressView mProgress;
 
-    private final int mMinHeight;
+    private final GalleryView mGalleryView;
+    private final Params mParams;
 
     private long mId = GalleryView.Adapter.INVALID_ID;
 
-    public GalleryPageView(ImageMovableTextTexture pageTextTexture, TextBinder textBinder,
-            int progressColor, int progressBgColor, int progressSize,
-            int minHeight, int infoInterval) {
-        mTextBinder = textBinder;
+    public static class Params {
+        int progressSize;
+        int progressColor;
+        int progressBgColor;
+        int pageMinWidth;
+        int pageMinHeight;
+        int infoInterval;
+        int textSize;
+        int textColor;
+        int errorTextSize;
+        int errorTextColor;
+    }
 
+    public GalleryPageView(GalleryView galleryView, Params params, ImageMovableTextTexture pageTextTexture) {
         // Add image
         mImage = new ImageView();
         GravityLayoutParams glp = new GravityLayoutParams(LayoutParams.MATCH_PARENT,
@@ -58,50 +69,64 @@ public class GalleryPageView extends GLFrameLayout {
         // Add other panel
         mInfo = new GLLinearLayout();
         mInfo.setOrientation(GLLinearLayout.VERTICAL);
-        mInfo.setInterval(infoInterval);
+        mInfo.setInterval(params.infoInterval);
         glp = new GravityLayoutParams(LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT);
         glp.gravity = Gravity.CENTER;
         addComponent(mInfo, glp);
 
         // Add page
-        mPage = new GLImageMovableTextView();
-        mPage.setTextTexture(pageTextTexture);
+        mIndex = new GLImageMovableTextView();
+        mIndex.setTextTexture(pageTextTexture);
         GLLinearLayout.LayoutParams lp = new GLLinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.CENTER_HORIZONTAL;
-        mInfo.addComponent(mPage, lp);
+        mInfo.addComponent(mIndex, lp);
 
         // Add error
-        mError = new GLTextureView();
+        mText = new GLTextureView();
         lp = new GLLinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.CENTER_HORIZONTAL;
-        mInfo.addComponent(mError, lp);
+        mInfo.addComponent(mText, lp);
 
         // Add progress
         mProgress = new GLProgressView();
-        mProgress.setBgColor(progressBgColor);
-        mProgress.setColor(progressColor);
-        mProgress.setMinimumWidth(progressSize);
-        mProgress.setMinimumHeight(progressSize);
+        mProgress.setBgColor(params.progressBgColor);
+        mProgress.setColor(params.progressColor);
+        mProgress.setMinimumWidth(params.progressSize);
+        mProgress.setMinimumHeight(params.progressSize);
         lp = new GLLinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.CENTER_HORIZONTAL;
         mInfo.addComponent(mProgress, lp);
 
-        mMinHeight = minHeight;
+        mGalleryView = galleryView;
+        mParams = params;
+    }
+
+    @Override
+    protected int getSuggestedMinimumWidth() {
+        // The width of the actual image may be smaller than mPageMinWidth.
+        // Set min width as 0 when the image is visible.
+        if ((mGalleryView.getLayoutMode() == GalleryView.LAYOUT_SCROLL_LEFT_TO_RIGHT
+                || mGalleryView.getLayoutMode() == GalleryView.LAYOUT_SCROLL_RIGHT_TO_LEFT)
+                && mImage.getVisibility() != VISIBLE) {
+            return mParams.pageMinWidth;
+        } else {
+            return super.getSuggestedMinimumWidth();
+        }
     }
 
     @Override
     protected int getSuggestedMinimumHeight() {
         // The height of the actual image may be smaller than mPageMinHeight.
         // Set min height as 0 when the image is visible.
-        // For PageLayoutManager, min height is useless.
-        if (mImage.getVisibility() == VISIBLE) {
-            return 0;
+        if (mGalleryView.getLayoutMode() == GalleryView.LAYOUT_SCROLL_TOP_TO_BOTTOM
+                && mImage.getVisibility() != VISIBLE) {
+            return mParams.pageMinHeight;
         } else {
-            return mMinHeight;
+            return super.getSuggestedMinimumHeight();
         }
     }
 
@@ -123,7 +148,7 @@ public class GalleryPageView extends GLFrameLayout {
 
     /**
      * Show progress in the View. showIndex to decide whether show index text.
-     * index is the number to show.
+     * The index will increase by to display.
      */
     public void showProgress(float progress, boolean showIndex, int index) {
         showInfo();
@@ -145,6 +170,17 @@ public class GalleryPageView extends GLFrameLayout {
         setImage(image, rect);
         setProgress(GalleryPageView.PROGRESS_GONE);
         setError(null);
+    }
+
+    /**
+     * Show only text in the View.
+     */
+    public void showText(String str) {
+        showInfo();
+        setImage(null, null);
+        hideIndex();
+        setProgress(GalleryPageView.PROGRESS_GONE);
+        setText(str);
     }
 
     /**
@@ -189,12 +225,12 @@ public class GalleryPageView extends GLFrameLayout {
     }
 
     private void setIndex(int index) {
-        mPage.setVisibility(VISIBLE);
-        mPage.setText(Integer.toString(index));
+        mIndex.setVisibility(VISIBLE);
+        mIndex.setText(Integer.toString(index + 1));
     }
 
     private void hideIndex() {
-        mPage.setVisibility(GONE);
+        mIndex.setVisibility(GONE);
     }
 
     private void setProgress(float progress) {
@@ -210,14 +246,39 @@ public class GalleryPageView extends GLFrameLayout {
         }
     }
 
-    private void setError(String error) {
-        mTextBinder.unbindText(mError);
-        if (error == null) {
-            mError.setVisibility(GONE);
+    private void setText(String str) {
+        unbindText(mText);
+        if (str == null) {
+            mText.setVisibility(GONE);
         } else {
-            mError.setVisibility(VISIBLE);
-            mTextBinder.bindText(mError, error);
+            mText.setVisibility(VISIBLE);
+            bindText(mText, str, mParams.textSize, mParams.textColor);
         }
+    }
+
+    private void setError(String error) {
+        unbindText(mText);
+        if (error == null) {
+            mText.setVisibility(GONE);
+        } else {
+            mText.setVisibility(VISIBLE);
+            bindText(mText, error, mParams.errorTextSize, mParams.errorTextColor);
+        }
+    }
+
+    private void unbindText(GLTextureView view) {
+        final Texture texture = view.getTexture();
+        if (texture != null) {
+            view.setTexture(null);
+            if (texture instanceof BasicTexture) {
+                ((BasicTexture) texture).recycle();
+            }
+        }
+    }
+
+    private void bindText(GLTextureView view, String str, int size, int color) {
+        final Texture texture = StringTexture.newInstance(str, size, color);
+        view.setTexture(texture);
     }
 
     public ImageView getImageView() {
@@ -226,10 +287,5 @@ public class GalleryPageView extends GLFrameLayout {
 
     public boolean isLoaded() {
         return mImage.getVisibility() == VISIBLE;
-    }
-
-    public interface TextBinder {
-        void unbindText(GLTextureView view);
-        void bindText(GLTextureView view, String str);
     }
 }

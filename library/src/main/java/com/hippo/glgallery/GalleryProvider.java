@@ -45,7 +45,7 @@ public abstract class GalleryProvider {
     private volatile Listener mListener;
     private volatile GLRoot mGLRoot;
 
-    private final LruCache<Integer, ImageData> mImageCache;
+    private final LruCache<Long, ImageData> mImageCache;
 
     private boolean mStarted = false;
 
@@ -73,74 +73,110 @@ public abstract class GalleryProvider {
     }
 
     /**
+     * Return the total number of chapters in this gallery.
+     *
      * @return {@link #STATE_WAIT} for wait,
      *          {@link #STATE_ERROR} for error, {@link #getError()} to get error message,
      *          0 for empty.
      */
-    public abstract int getSize();
+    public abstract int getChapterCount();
 
     /**
-     * Find image in cache first. Call {@link #onRequest(int)} if miss.
+     * Return the total number of pages in this chapter.
+     *
+     * @return {@link #STATE_WAIT} for wait,
+     *          {@link #STATE_ERROR} for error, {@link #getError(int)} to get error message,
+     *          0 for empty.
+     */
+    public abstract int getPageCount(int chapter);
+
+    // Generate image key
+    private static long genKey(int chapter, int index) {
+        return ((long) chapter) << 32 | index;
+    }
+
+    public final void requestChapter(int chapter) {
+        onRequestChapter(chapter);
+    }
+
+    /**
+     * Find image in cache first. Call {@link #onRequest(int, int)} if miss.
      */
     @CheckResult
-    public final ImageData request(int index) {
-        final ImageData imageData = mImageCache.get(index);
+    public final ImageData request(int chapter, int index) {
+        final ImageData imageData = mImageCache.get(genKey(chapter, index));
         if (imageData != null) {
             return imageData;
         } else {
-            onRequest(index);
+            onRequest(chapter, index);
             return null;
         }
     }
 
     /**
-     * Cache will be ignored. Call {@link #onForceRequest(int)} directly.
+     * Cache will be ignored. Call {@link #onForceRequest(int, int)} directly.
      */
-    public final void forceRequest(int index) {
-        onForceRequest(index);
+    public final void forceRequest(int chapter, int index) {
+        onForceRequest(chapter, index);
     }
 
-    protected abstract void onRequest(int index);
+    protected abstract void onRequestChapter(int chapter);
 
-    protected abstract void onForceRequest(int index);
+    protected abstract void onRequest(int chapter, int index);
 
-    public final void cancelRequest(int index) {
-        onCancelRequest(index);
+    protected abstract void onForceRequest(int chapter, int index);
+
+    public final void cancelRequest(int chapter, int index) {
+        onCancelRequest(chapter, index);
     }
 
-    protected abstract void onCancelRequest(int index);
+    protected abstract void onCancelRequest(int chapter, int index);
 
+    /**
+     * Return the error message of this gallery.
+     */
+    @Nullable
     public abstract String getError();
+
+    /**
+     * Return the error message of this chapter.
+     */
+    @Nullable
+    public abstract String getError(int chapter);
 
     public void setListener(Listener listener) {
         mListener = listener;
     }
 
     public void notifyStateChanged() {
-        notify(NotifyTask.TYPE_STATE_CHANGED, -1, 0.0f, null, null);
+        notify(NotifyTask.TYPE_STATE_CHANGED, -1, -1, 0.0f, null, null);
     }
 
-    public void notifyDataChanged(int index) {
-        notify(NotifyTask.TYPE_DATA_CHANGED, index, 0.0f, null, null);
+    public void notifyChapterStateChanged(int chapter) {
+        notify(NotifyTask.TYPE_STATE_CHANGED, chapter, -1, 0.0f, null, null);
     }
 
-    public void notifyPageWait(int index) {
-        notify(NotifyTask.TYPE_WAIT, index, 0.0f, null, null);
+    public void notifyDataChanged(int chapter, int index) {
+        notify(NotifyTask.TYPE_DATA_CHANGED, chapter, index, 0.0f, null, null);
     }
 
-    public void notifyPagePercent(int index, float percent) {
-        notify(NotifyTask.TYPE_PERCENT, index, percent, null, null);
+    public void notifyPageWait(int chapter, int index) {
+        notify(NotifyTask.TYPE_WAIT, chapter, index, 0.0f, null, null);
     }
 
-    public void notifyPageSucceed(int index, @Nullable ImageData image) {
-        notify(NotifyTask.TYPE_SUCCEED, index, 0.0f, image, null);
+    public void notifyPagePercent(int chapter, int index, float percent) {
+        notify(NotifyTask.TYPE_PERCENT, chapter, index, percent, null, null);
     }
 
-    public void notifyPageFailed(int index, String error) {
-        notify(NotifyTask.TYPE_FAILED, index, 0.0f, null, error);
+    public void notifyPageSucceed(int chapter, int index, @Nullable ImageData image) {
+        notify(NotifyTask.TYPE_SUCCEED, chapter, index, 0.0f, image, null);
     }
 
-    private void notify(@NotifyTask.Type int type, int index, float percent, ImageData image, String error) {
+    public void notifyPageFailed(int chapter, int index, String error) {
+        notify(NotifyTask.TYPE_FAILED, chapter, index, 0.0f, null, error);
+    }
+
+    private void notify(@NotifyTask.Type int type, int chapter, int index, float percent, ImageData image, String error) {
         final Listener listener = mListener;
         if (listener == null) {
             return;
@@ -155,7 +191,7 @@ public abstract class GalleryProvider {
         if (task == null) {
             task = new NotifyTask(listener, mNotifyTaskPool, mImageCache);
         }
-        task.setData(type, index, percent, image, error);
+        task.setData(type, chapter, index, percent, image, error);
         glRoot.addOnGLIdleListener(task);
     }
 
@@ -175,24 +211,26 @@ public abstract class GalleryProvider {
 
         private final Listener mListener;
         private final ConcurrentPool<NotifyTask> mPool;
-        private final LruCache<Integer, ImageData> mCache;
+        private final LruCache<Long, ImageData> mCache;
 
         @Type
         private int mType;
+        private int mChapter;
         private int mIndex;
         private float mPercent;
         private ImageData mImage;
         private String mError;
 
         public NotifyTask(Listener listener, ConcurrentPool<NotifyTask> pool,
-                LruCache<Integer, ImageData> cache) {
+                LruCache<Long, ImageData> cache) {
             mListener = listener;
             mPool = pool;
             mCache = cache;
         }
 
-        public void setData(@Type int type, int index, float percent, ImageData image, String error) {
+        public void setData(@Type int type, int chapter, int index, float percent, ImageData image, String error) {
             mType = type;
+            mChapter = chapter;
             mIndex = index;
             mPercent = percent;
             mImage = image;
@@ -203,23 +241,28 @@ public abstract class GalleryProvider {
         public boolean onGLIdle(GLCanvas canvas, boolean renderRequested) {
             switch (mType) {
                 case TYPE_STATE_CHANGED:
+                    if (mChapter == -1) {
+                        mListener.onStateChanged();
+                    } else {
+                        mListener.onChapterStateChanged(mChapter);
+                    }
                     mListener.onStateChanged();
                     break;
                 case TYPE_DATA_CHANGED:
-                    mListener.onDataChanged(mIndex);
+                    mListener.onDataChanged(mChapter, mIndex);
                     break;
                 case TYPE_WAIT:
-                    mListener.onPageWait(mIndex);
+                    mListener.onPageWait(mChapter, mIndex);
                     break;
                 case TYPE_PERCENT:
-                    mListener.onPagePercent(mIndex, mPercent);
+                    mListener.onPagePercent(mChapter, mIndex, mPercent);
                     break;
                 case TYPE_SUCCEED:
-                    mListener.onPageSucceed(mIndex, mImage);
-                    mCache.put(mIndex, mImage);
+                    mListener.onPageSucceed(mChapter, mIndex, mImage);
+                    mCache.put(genKey(mChapter, mIndex), mImage);
                     break;
                 case TYPE_FAILED:
-                    mListener.onPageFailed(mIndex, mError);
+                    mListener.onPageFailed(mChapter, mIndex, mError);
                     break;
             }
 
@@ -233,25 +276,25 @@ public abstract class GalleryProvider {
         }
     }
 
-    private static class ImageCacheHelper implements LruCacheHelper<Integer, ImageData> {
+    private static class ImageCacheHelper implements LruCacheHelper<Long, ImageData> {
 
         @Override
-        public int sizeOf(Integer key, ImageData value) {
+        public int sizeOf(Long key, ImageData value) {
             return value.getWidth() * value.getHeight() * 4;
         }
 
         @Override
-        public ImageData create(Integer key) {
+        public ImageData create(Long key) {
             return null;
         }
 
         @Override
-        public void onEntryAdded(Integer key, ImageData value) {
+        public void onEntryAdded(Long key, ImageData value) {
             value.addReference();
         }
 
         @Override
-        public void onEntryRemoved(boolean evicted, Integer key, ImageData oldValue, ImageData newValue) {
+        public void onEntryRemoved(boolean evicted, Long key, ImageData oldValue, ImageData newValue) {
             oldValue.removeReference();
             if (!oldValue.isReferenced()) {
                 oldValue.recycle();
@@ -261,19 +304,27 @@ public abstract class GalleryProvider {
 
     public interface Listener {
 
+        /**
+         * Called when chapter count changed.
+         */
         void onStateChanged();
 
-        void onPageWait(int index);
+        /**
+         * Called when page count changed.
+         */
+        void onChapterStateChanged(int chapter);
 
-        void onPagePercent(int index, float percent);
+        void onPageWait(int chapter, int index);
+
+        void onPagePercent(int chapter, int index, float percent);
 
         /**
          * Here is where the ImageData first came.
          */
-        void onPageSucceed(int index, ImageData image);
+        void onPageSucceed(int chapter, int index, ImageData image);
 
-        void onPageFailed(int index, String error);
+        void onPageFailed(int chapter, int index, String error);
 
-        void onDataChanged(int index);
+        void onDataChanged(int chapter, int index);
     }
 }

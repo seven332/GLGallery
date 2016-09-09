@@ -27,23 +27,19 @@ import android.util.Log;
 import android.view.MotionEvent;
 
 import com.hippo.glview.annotation.RenderThread;
-import com.hippo.glview.glrenderer.BasicTexture;
 import com.hippo.glview.glrenderer.GLCanvas;
-import com.hippo.glview.glrenderer.StringTexture;
-import com.hippo.glview.glrenderer.Texture;
 import com.hippo.glview.image.ImageMovableTextTexture;
 import com.hippo.glview.util.GalleryUtils;
 import com.hippo.glview.view.AnimationTime;
 import com.hippo.glview.view.GLRoot;
 import com.hippo.glview.view.GLView;
 import com.hippo.glview.widget.GLEdgeView;
-import com.hippo.glview.widget.GLTextureView;
 import com.hippo.yorozuya.Pool;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-public final class GalleryView extends GLView implements GestureRecognizer.Listener, GalleryPageView.TextBinder {
+public final class GalleryView extends GLView implements GestureRecognizer.Listener {
 
     private static final String LOG_TAG = GalleryView.class.getSimpleName();
 
@@ -92,6 +88,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     @Nullable
     private Listener mListener;
 
+    private final GalleryPageView.Params mPageParams;
     private ImageMovableTextTexture mIndexTextTexture;
 
     private WaitingLayoutManager mWaitingLayoutManager;
@@ -112,12 +109,10 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private final int mBackgroundColor;
     private final int mPagerInterval;
     private final int mScrollInterval;
-    private final int mPageMinHeight;
-    private final int mPageInfoInterval;
-    private final int mProgressColor;
     private final int mProgressSize;
-    private final int mIndexTextColor;
+    private final int mProgressColor;
     private final int mIndexTextSize;
+    private final int mIndexTextColor;
     private final Typeface mIndexTextTypeface;
     private final int mErrorTextSize;
     private final int mErrorTextColor;
@@ -156,15 +151,18 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         public int edgeColor = Color.WHITE;
         public int pagerInterval = 48;
         public int scrollInterval = 24;
+        public int pageMinWidth = 256;
         public int pageMinHeight = 256;
         public int pageInfoInterval = 24;
-        public int progressColor = Color.WHITE;
         public int progressSize = 56;
-        public int indexTextColor = Color.WHITE;
+        public int progressColor = Color.WHITE;
         public int indexTextSize = 56;
+        public int indexTextColor = Color.WHITE;
         public Typeface indexTextTypeface = Typeface.DEFAULT;
-        public int errorTextColor = Color.RED;
+        public int textSize = 48;
+        public int textColor = Color.WHITE;
         public int errorTextSize = 24;
+        public int errorTextColor = Color.RED;
         public String defaultErrorString = "Error";
         public String emptyString = "Empty";
 
@@ -188,20 +186,31 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         mStartPosition = build.startPosition;
 
         mBackgroundColor = build.backgroundColor;
-        mPageMinHeight = build.pageMinHeight;
         mPagerInterval = build.pagerInterval;
         mScrollInterval = build.scrollInterval;
-        mPageInfoInterval = build.pageInfoInterval;
-        mProgressColor = build.progressColor;
         mProgressSize = build.progressSize;
-        mIndexTextColor = build.indexTextColor;
+        mProgressColor = build.progressColor;
         mIndexTextSize = build.indexTextSize;
+        mIndexTextColor = build.indexTextColor;
         mIndexTextTypeface = build.indexTextTypeface;
-        mErrorTextColor = build.errorTextColor;
         mErrorTextSize = build.errorTextSize;
+        mErrorTextColor = build.errorTextColor;
 
         mDefaultErrorString = build.defaultErrorString;
         mEmptyString = build.emptyString;
+
+        final GalleryPageView.Params params = new GalleryPageView.Params();
+        params.progressSize = build.progressSize;
+        params.progressColor = build.progressColor;
+        params.progressBgColor = build.backgroundColor;
+        params.pageMinWidth = build.pageMinWidth;
+        params.pageMinHeight = build.pageMinHeight;
+        params.infoInterval = build.pageInfoInterval;
+        params.textSize = build.textSize;
+        params.textColor = build.textColor;
+        params.errorTextSize = build.errorTextSize;
+        params.errorTextColor = build.errorTextColor;
+        mPageParams = params;
 
         setBackgroundColor(mBackgroundColor);
     }
@@ -758,32 +767,13 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     GalleryPageView obtainPage() {
         GalleryPageView page = mGalleryPageViewPool.pop();
         if (page == null) {
-            page = new GalleryPageView(mIndexTextTexture, this,
-                    mProgressColor, mBackgroundColor, mProgressSize,
-                    mPageMinHeight, mPageInfoInterval);
+            page = new GalleryPageView(this, mPageParams, mIndexTextTexture);
         }
         return page;
     }
 
     void releasePage(GalleryPageView page) {
         mGalleryPageViewPool.push(page);
-    }
-
-    @Override
-    public void unbindText(GLTextureView view) {
-        final Texture texture = view.getTexture();
-        if (texture != null) {
-            view.setTexture(null);
-            if (texture instanceof BasicTexture) {
-                ((BasicTexture) texture).recycle();
-            }
-        }
-    }
-
-    @Override
-    public void bindText(GLTextureView view, String str) {
-        final Texture texture = StringTexture.newInstance(str, mErrorTextSize, mErrorTextColor);
-        view.setTexture(texture);
     }
 
     public static abstract class Adapter {
