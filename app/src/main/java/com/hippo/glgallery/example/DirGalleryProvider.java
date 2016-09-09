@@ -21,9 +21,9 @@ import android.os.Process;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
-import com.hippo.glgallery.GalleryPageView;
 import com.hippo.glgallery.GalleryProvider;
 import com.hippo.image.Image;
+import com.hippo.image.ImageData;
 import com.hippo.unifile.FilenameFilter;
 import com.hippo.unifile.UniFile;
 import com.hippo.yorozuya.IOUtils;
@@ -41,10 +41,12 @@ public class DirGalleryProvider extends GalleryProvider implements Runnable {
 
     private static final String TAG = DirGalleryProvider.class.getSimpleName();
 
+    private static final int INVALID_INDEX = -1;
+
     private final Resources mResources;
     private final UniFile mDir;
     private final Stack<Integer> mRequests = new Stack<>();
-    private final AtomicInteger mDecodingIndex = new AtomicInteger(GalleryPageView.INVALID_INDEX);
+    private final AtomicInteger mDecodingIndex = new AtomicInteger(INVALID_INDEX);
     @Nullable
     private Thread mBgThread;
     private volatile int mSize = STATE_WAIT;
@@ -74,28 +76,36 @@ public class DirGalleryProvider extends GalleryProvider implements Runnable {
     }
 
     @Override
-    public int size() {
+    public int getChapterCount() {
+        return 1;
+    }
+
+    @Override
+    public int getPageCount(int chapter) {
         return mSize;
     }
 
     @Override
-    protected void onRequest(int index) {
+    protected void onRequestChapter(int chapter) {}
+
+    @Override
+    protected void onRequest(int chapter, int index) {
         synchronized (mRequests) {
             if (!mRequests.contains(index) && index != mDecodingIndex.get()) {
                 mRequests.add(index);
                 mRequests.notify();
             }
         }
-        notifyPageWait(index);
+        notifyPageWait(chapter, index);
     }
 
     @Override
-    protected void onForceRequest(int index) {
-        onRequest(index);
+    protected void onForceRequest(int chapter, int index) {
+        onRequest(chapter, index);
     }
 
     @Override
-    public void onCancelRequest(int index) {
+    public void onCancelRequest(int chapter, int index) {
         synchronized (mRequests) {
             mRequests.remove(Integer.valueOf(index));
         }
@@ -106,17 +116,23 @@ public class DirGalleryProvider extends GalleryProvider implements Runnable {
         return mError;
     }
 
+    @Nullable
+    @Override
+    public String getError(int chapter) {
+        return mError;
+    }
+
     @Override
     public void run() {
         // It may take a long time, so run it in new thread
-        UniFile[] files = mDir.listFiles(new Filter());
+        final UniFile[] files = mDir.listFiles(new Filter());
 
         if (files == null) {
             mSize = STATE_ERROR;
             mError = mResources.getString(R.string.invalid_path);
 
             // Notify to to show error
-            notifyDataChanged();
+            notifyChapterStateChanged(0);
             return;
         }
 
@@ -125,10 +141,15 @@ public class DirGalleryProvider extends GalleryProvider implements Runnable {
 
         // Set state normal and notify
         mSize = files.length;
-        notifyDataChanged();
+        notifyStateChanged();
+
+        // Check empty
+        if (files.length == 0) {
+            return;
+        }
 
         while (!Thread.currentThread().isInterrupted()) {
-            int index;
+            final int index;
             synchronized (mRequests) {
                 if (mRequests.isEmpty()) {
                     try {
@@ -145,28 +166,28 @@ public class DirGalleryProvider extends GalleryProvider implements Runnable {
 
             // Check index valid
             if (index < 0 || index >= files.length) {
-                mDecodingIndex.lazySet(GalleryPageView.INVALID_INDEX);
-                notifyPageFailed(index, mResources.getString(R.string.out_of_range));
+                mDecodingIndex.lazySet(INVALID_INDEX);
+                notifyPageFailed(0, index, mResources.getString(R.string.out_of_range));
                 continue;
             }
 
             InputStream is = null;
             try {
                 is = files[index].openInputStream();
-                Image image = Image.decode(is, true);
-                mDecodingIndex.lazySet(GalleryPageView.INVALID_INDEX);
+                final ImageData image = Image.decode(is, false);
+                mDecodingIndex.lazySet(INVALID_INDEX);
                 if (image != null) {
-                    notifyPageSucceed(index, image);
+                    notifyPageSucceed(0, index, image);
                 } else {
-                    notifyPageFailed(index, mResources.getString(R.string.decoding_failed));
+                    notifyPageFailed(0, index, mResources.getString(R.string.decoding_failed));
                 }
             } catch (IOException e) {
-                mDecodingIndex.lazySet(GalleryPageView.INVALID_INDEX);
-                notifyPageFailed(index, mResources.getString(R.string.reading_failed));
+                mDecodingIndex.lazySet(INVALID_INDEX);
+                notifyPageFailed(0, index, mResources.getString(R.string.reading_failed));
             } finally {
                 IOUtils.closeQuietly(is);
             }
-            mDecodingIndex.lazySet(GalleryPageView.INVALID_INDEX);
+            mDecodingIndex.lazySet(INVALID_INDEX);
         }
     }
 
@@ -182,15 +203,15 @@ public class DirGalleryProvider extends GalleryProvider implements Runnable {
 
         @Override
         public boolean accept(UniFile dir, String filename) {
-            return filename != null && StringUtils.endsWith(filename, ACCEPTED_EXTENSIONS);
+            return filename != null && StringUtils.endsWith(filename, ACCEPTED_EXTENSIONS) != null;
         }
     }
 
     private static class UniFileComparator implements Comparator<UniFile> {
         @Override
         public int compare(UniFile lhs, UniFile rhs) {
-            String lhsName = lhs.getName();
-            String rhsName = rhs.getName();
+            final String lhsName = lhs.getName();
+            final String rhsName = rhs.getName();
             if (lhsName != null) {
                 if (rhsName != null) {
                     return lhsName.compareTo(rhsName);
