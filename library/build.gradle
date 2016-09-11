@@ -33,7 +33,7 @@ tasks.withType(JavaCompile) {
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     compile 'com.github.seven332:beerbelly:0.2.1'
-    compile 'com.github.seven332:glview-image:0.1.2'
+    compile 'com.github.seven332:glview-image:0.1.3'
     testCompile 'junit:junit:4.12'
 }
 
