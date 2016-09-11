@@ -6,56 +6,36 @@ import org.jboss.forge.roaster.model.source.JavaClassSource;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
 public class Main {
 
-    private static final String SOURCE_FILE = "../library/src/main/java-gen/com/hippo/glgallery/Postman.java";
+    private static final String SOURCE_GALLERY_VIEW_POSTMAN_FILE =
+            "../library/src/main/java-gen/com/hippo/glgallery/GalleryViewPostman.java";
+    private static final String SOURCE_PROVIDER_ADAPTER_POSTMAN_FILE =
+            "../library/src/main/java-gen/com/hippo/glgallery/ProviderAdapterPostman.java";
 
-    private static final String METHOD_CONSTRUCTOR =
-            "Postman(GalleryView galleryView) {\n" +
+    private static final String METHOD_GALLERY_VIEW_POSTMAN_CONSTRUCTOR =
+            "GalleryViewPostman(GalleryView galleryView) {\n" +
             "    mGalleryView = galleryView;\n" +
             "}";
 
-    private static final String METHOD_POST_METHOD =
-            "void postMethod(int method, Object... args) {\n" +
-            "    synchronized (this) {\n" +
-            "        mMethodList.add(method);\n" +
-            "        mArgsList.add(args);\n" +
-            "    }\n" +
-            "    request();\n" +
+    private static final String METHOD_PROVIDER_ADAPTER_POSTMAN_CONSTRUCTOR =
+            "ProviderAdapterPostman(ProviderAdapter providerAdapter) {\n" +
+            "    mProviderAdapter = providerAdapter;\n" +
             "}";
 
-    private static final String METHOD_DISPATCH_METHOD_PART1 =
-            "public void onHandle(GL10 gl) {\n" +
-            "    final List<Integer> methodList = mMethodListTemp;\n" +
-            "    final List<Object[]> argsList = mArgsListTemp;\n" +
-            "    synchronized (this) {\n" +
-            "        if (mMethodList.isEmpty()) {\n" +
-            "            return;\n" +
-            "        }\n" +
-            "        methodList.addAll(mMethodList);\n" +
-            "        argsList.addAll(mArgsList);\n" +
-            "        mMethodList.clear();\n" +
-            "        mArgsList.clear();\n" +
-            "    }\n" +
-            "    for (int i = 0, n = methodList.size(); i < n; i++) {\n" +
-            "        final int method = methodList.get(i);\n" +
-            "        final Object[] args = argsList.get(i);\n" +
-            "        switch (method) {\n";
+    private static final String METHOD_HANDLE_METHOD_PART1 =
+            "@Override\n" +
+            "protected void handleMethod(int method, Object... args) {\n" +
+            "    switch (method) {\n";
 
-    private static final String METHOD_DISPATCH_METHOD_PART2 =
-            "            default:\n" +
-            "                throw new IllegalStateException(\"Unknown method: \" + method);\n" +
-            "        }\n" +
+    private static final String METHOD_HANDLE_METHOD_PART2 =
+            "        default:\n" +
+            "            throw new IllegalStateException(\"Unknown method: \" + method);\n" +
             "    }\n" +
-            "    methodList.clear();\n" +
-            "    argsList.clear();\n" +
             "}";
 
-
-    private static final String[][] METHOD_ARRAY = {
+    private static final String[][] METHOD_GALLERY_VIEW_POSTMAN_ARRAY = {
             {"setLayoutMode", "Integer"},
             {"setScaleMode", "Integer"},
             {"setStartPosition", "Integer"},
@@ -79,26 +59,55 @@ public class Main {
             {"onPointerDown", "Float", "Float"},
             {"onPointerUp"},
     };
+    private static final String[][] METHOD_PROVIDER_ADAPTER_POSTMAN_ARRAY = {
+            {"setClipMode", "Integer"},
+            {"setShowIndex", "Boolean"},
+    };
 
     public static void main(String[] args) throws IOException {
+        genGalleryViewPostman();
+        genProviderAdapterPostman();
+    }
+
+    private static void genGalleryViewPostman() throws IOException {
         final JavaClassSource javaClass = Roaster.create(JavaClassSource.class);
         javaClass.setPackage("com.hippo.glgallery");
-        javaClass.addImport(List.class);
-        javaClass.addImport(ArrayList.class);
-        javaClass.addImport("javax.microedition.khronos.opengles.GL10");
         javaClass.setPackagePrivate();
-        javaClass.setName("Postman");
-        javaClass.setSuperType("com.hippo.glview.view.GLRoot.Handler");
+        javaClass.setName("GalleryViewPostman");
+        javaClass.setSuperType("Postman");
 
-        javaClass.addField("private static final int INIT_SIZE = 5");
-        javaClass.addField("private final List<Integer> mMethodList = new ArrayList<>(INIT_SIZE)");
-        javaClass.addField("private final List<Object[]> mArgsList = new ArrayList<>(INIT_SIZE)");
-        javaClass.addField("private final List<Integer> mMethodListTemp = new ArrayList<>(INIT_SIZE)");
-        javaClass.addField("private final List<Object[]> mArgsListTemp = new ArrayList<>(INIT_SIZE)");
         javaClass.addField("private final GalleryView mGalleryView");
+        javaClass.addMethod(METHOD_GALLERY_VIEW_POSTMAN_CONSTRUCTOR).setConstructor(true);
+        addDispatchMethod(javaClass, METHOD_GALLERY_VIEW_POSTMAN_ARRAY, "mGalleryView");
 
-        for (int i = 0; i < METHOD_ARRAY.length; i++) {
-            final String[] method = METHOD_ARRAY[i];
+        final File file = new File(SOURCE_GALLERY_VIEW_POSTMAN_FILE);
+        new File(file.getParent()).mkdirs();
+        final FileWriter fileWriter = new FileWriter(file);
+        fileWriter.write(javaClass.toString());
+        fileWriter.close();
+    }
+
+    private static void genProviderAdapterPostman() throws IOException {
+        final JavaClassSource javaClass = Roaster.create(JavaClassSource.class);
+        javaClass.setPackage("com.hippo.glgallery");
+        javaClass.setPackagePrivate();
+        javaClass.setName("ProviderAdapterPostman");
+        javaClass.setSuperType("Postman");
+
+        javaClass.addField("private final ProviderAdapter mProviderAdapter");
+        javaClass.addMethod(METHOD_PROVIDER_ADAPTER_POSTMAN_CONSTRUCTOR).setConstructor(true);
+        addDispatchMethod(javaClass, METHOD_PROVIDER_ADAPTER_POSTMAN_ARRAY, "mProviderAdapter");
+
+        final File file = new File(SOURCE_PROVIDER_ADAPTER_POSTMAN_FILE);
+        new File(file.getParent()).mkdirs();
+        final FileWriter fileWriter = new FileWriter(file);
+        fileWriter.write(javaClass.toString());
+        fileWriter.close();
+    }
+
+    private static void addDispatchMethod(JavaClassSource javaClass, String[][] methodArray, String obj) {
+        for (int i = 0; i < methodArray.length; i++) {
+            final String[] method = methodArray[i];
             javaClass.addField()
                     .setPackagePrivate()
                     .setStatic(true)
@@ -108,13 +117,10 @@ public class Main {
                     .setLiteralInitializer(Integer.toString(i));
         }
 
-        javaClass.addMethod(METHOD_CONSTRUCTOR).setConstructor(true);
-        javaClass.addMethod(METHOD_POST_METHOD);
-
-        final StringBuilder methodDispatchMethod = new StringBuilder(METHOD_DISPATCH_METHOD_PART1);
-        for (final String[] method : METHOD_ARRAY) {
+        final StringBuilder methodDispatchMethod = new StringBuilder(METHOD_HANDLE_METHOD_PART1);
+        for (final String[] method : methodArray) {
             methodDispatchMethod.append("            case ").append(getMethodIdName(method)).append(":\n");
-            methodDispatchMethod.append("                mGalleryView.").append(method[0]).append("Internal(");
+            methodDispatchMethod.append("                ").append(obj).append(".").append(method[0]).append("Internal(");
             for (int i = 1; i < method.length; i++) {
                 final String type = method[i];
                 if (i != 1) {
@@ -125,15 +131,11 @@ public class Main {
             methodDispatchMethod.append(");\n");
             methodDispatchMethod.append("                break;\n");
         }
-        methodDispatchMethod.append(METHOD_DISPATCH_METHOD_PART2);
+        methodDispatchMethod.append(METHOD_HANDLE_METHOD_PART2);
         javaClass.addMethod(methodDispatchMethod.toString());
-
-        final File file = new File(SOURCE_FILE);
-        new File(file.getParent()).mkdirs();
-        final FileWriter fileWriter = new FileWriter(file);
-        fileWriter.write(javaClass.toString());
-        fileWriter.close();
     }
+
+
 
     private static String getMethodIdName(String[] method) {
         final String methodName = method[0];

@@ -56,6 +56,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
 
     private final GalleryProvider mProvider;
     private final ImageTexture.Uploader mUploader;
+    private final ProviderAdapterPostman mPostman;
 
     @Clip
     private int mClipMode = CLIP_NONE;
@@ -82,6 +83,8 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         provider.setGLRoot(glRoot);
         provider.setListener(this);
         mUploader = new ImageTexture.Uploader(glRoot);
+        mPostman = new ProviderAdapterPostman(this);
+        glRoot.registerHandler(mPostman);
 
         mChapter = chapter;
         mPage = page;
@@ -244,6 +247,14 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
     }
 
     public void setClipMode(@Clip int clipMode) {
+        mPostman.postMethod(ProviderAdapterPostman.METHOD_SET_CLIP_MODE, clipMode);
+    }
+
+    public void setShowIndex(boolean showIndex) {
+        mPostman.postMethod(ProviderAdapterPostman.METHOD_SET_SHOW_INDEX, showIndex);
+    }
+
+    void setClipModeInternal(int clipMode) {
         if (mClipMode != clipMode) {
             mClipMode = clipMode;
             if (isAttached()) {
@@ -252,7 +263,7 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
     }
 
-    public void setShowIndex(boolean showIndex) {
+    void setShowIndexInternal(boolean showIndex) {
         if (mShowIndex != showIndex) {
             mShowIndex = showIndex;
             if (isAttached()) {

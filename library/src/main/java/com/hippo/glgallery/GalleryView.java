@@ -181,7 +181,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         mContext = build.mContext;
         mGestureRecognizer = new GestureRecognizer(mContext, this);
         mEdgeView = new GLEdgeView(build.edgeColor);
-        mPostman = new Postman(this);
+        mPostman = new GalleryViewPostman(this);
 
         build.mGLRoot.registerHandler(mPostman);
 
@@ -976,7 +976,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void setLayoutMode(@LayoutMode int layoutMode) {
-        mPostman.postMethod(Postman.METHOD_SET_LAYOUT_MODE, layoutMode);
+        mPostman.postMethod(GalleryViewPostman.METHOD_SET_LAYOUT_MODE, layoutMode);
     }
 
     /**
@@ -985,7 +985,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void setScaleMode(@ScaleMode int scaleMode) {
-        mPostman.postMethod(Postman.METHOD_SET_SCALE_MODE, scaleMode);
+        mPostman.postMethod(GalleryViewPostman.METHOD_SET_SCALE_MODE, scaleMode);
     }
 
     /**
@@ -994,7 +994,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void setStartPosition(@StartPosition int startPosition) {
-        mPostman.postMethod(Postman.METHOD_SET_START_POSITION, startPosition);
+        mPostman.postMethod(GalleryViewPostman.METHOD_SET_START_POSITION, startPosition);
     }
 
     /**
@@ -1003,7 +1003,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void pageNext() {
-        mPostman.postMethod(Postman.METHOD_PAGE_NEXT);
+        mPostman.postMethod(GalleryViewPostman.METHOD_PAGE_NEXT);
     }
 
     /**
@@ -1012,7 +1012,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void pagePrevious() {
-        mPostman.postMethod(Postman.METHOD_PAGE_PREVIOUS);
+        mPostman.postMethod(GalleryViewPostman.METHOD_PAGE_PREVIOUS);
     }
 
     /**
@@ -1021,7 +1021,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void pageToId(long id) {
-        mPostman.postMethod(Postman.METHOD_PAGE_TO_ID, id);
+        mPostman.postMethod(GalleryViewPostman.METHOD_PAGE_TO_ID, id);
     }
 
     /**
@@ -1030,84 +1030,84 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
      * It can be called in UI thread.
      */
     public void scaleToNextLevel(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_SCALE_TO_NEXT_LEVEL, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_SCALE_TO_NEXT_LEVEL, x, y);
     }
 
     @Override
     public boolean onSingleTapUp(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_SINGLE_TAP_UP, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_SINGLE_TAP_UP, x, y);
         return true;
     }
 
     @Override
     public boolean onSingleTapConfirmed(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_SINGLE_TAP_CONFIRMED, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_SINGLE_TAP_CONFIRMED, x, y);
         return true;
     }
 
     @Override
     public boolean onDoubleTap(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_DOUBLE_TAP, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_DOUBLE_TAP, x, y);
         return true;
     }
 
     @Override
     public boolean onDoubleTapConfirmed(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_DOUBLE_TAP_CONFIRMED, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_DOUBLE_TAP_CONFIRMED, x, y);
         return true;
     }
 
     @Override
     public void onLongPress(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_LONG_PRESS, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_LONG_PRESS, x, y);
     }
 
     @Override
     public boolean onScroll(float dx, float dy, float totalX, float totalY, float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_SCROLL, dx, dy, totalX, totalY, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_SCROLL, dx, dy, totalX, totalY, x, y);
         return true;
     }
 
     @Override
     public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-        mPostman.postMethod(Postman.METHOD_ON_FLING, velocityX, velocityY);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_FLING, velocityX, velocityY);
         return true;
     }
 
     @Override
     public boolean onScaleBegin(float focusX, float focusY) {
-        mPostman.postMethod(Postman.METHOD_ON_SCALE_BEGIN, focusX, focusY);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_SCALE_BEGIN, focusX, focusY);
         return true;
     }
 
     @Override
     public boolean onScale(float focusX, float focusY, float scale) {
-        mPostman.postMethod(Postman.METHOD_ON_SCALE, focusX, focusY, scale);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_SCALE, focusX, focusY, scale);
         return true;
     }
 
     @Override
     public void onScaleEnd() {
-        mPostman.postMethod(Postman.METHOD_ON_SCALE_END);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_SCALE_END);
     }
 
     @Override
     public void onDown(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_DOWN, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_DOWN, x, y);
     }
 
     @Override
     public void onUp() {
-        mPostman.postMethod(Postman.METHOD_ON_UP);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_UP);
     }
 
     @Override
     public void onPointerDown(float x, float y) {
-        mPostman.postMethod(Postman.METHOD_ON_POINTER_DOWN, x, y);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_POINTER_DOWN, x, y);
     }
 
     @Override
     public void onPointerUp() {
-        mPostman.postMethod(Postman.METHOD_ON_POINTER_UP);
+        mPostman.postMethod(GalleryViewPostman.METHOD_ON_POINTER_UP);
     }
 }
