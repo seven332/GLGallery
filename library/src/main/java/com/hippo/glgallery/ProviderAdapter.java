@@ -29,7 +29,6 @@ import com.hippo.yorozuya.MathUtils;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
-// TODO Set provider ?
 public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvider.Listener {
 
     private static final String LOG_TAG = ProviderAdapter.class.getSimpleName();
@@ -71,17 +70,6 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
     private int mHeadCheckedChapter = INVALID_CHAPTER;
     private int mTailCheckedChapter = INVALID_CHAPTER;
 
-    // For page with image:
-    //
-    // 0   XXX...XXX   XXX...XXX   X
-    // 1bit  31bit       31bit    1bit
-    //      chapter      index    clip
-    //
-    // For page with text:
-    //
-    // 1   XXX...XXX   000...000
-    // 1bit  31bit       32bit
-    //      chapter
     private int mChapter;
     private int mPage;
     // false for first one, true for second one
@@ -273,10 +261,20 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
     }
 
+    // For page with image:
+    //
+    // 0   XXX...XXX   XXX...XXX   X
+    // 1bit  31bit       31bit    1bit
+    //      chapter      index    clip
     public static long genId(int chapter, int index, boolean clipIndex) {
         return ((long) chapter) << 32 | ((long) index) << 1 | (clipIndex ? 1 : 0);
     }
 
+    // For page with text:
+    //
+    // 1   XXX...XXX   000...000
+    // 1bit  31bit       32bit
+    //      chapter
     public static long genId(int chapter) {
         return 1L << 63 | ((long) chapter) << 32;
     }
@@ -595,19 +593,12 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
 
     @Override
     public void onChapterStateChanged(int chapter) {
-        if (mChapterCount <= 0) {
-            return;
-        }
-        if (chapter < 0 || chapter >= mChapterCount) {
-            // Out of range
+        if ( mChapterCount <= 0 || chapter < 0 || chapter >= mChapterCount) {
             return;
         }
 
         final int oldChapter = mChapter;
-        final int oldPageCount = mPageCountArray[chapter];
         final int newPageCount = mProvider.getPageCount(chapter);
-        final int oldHeadChapter = mHeadChapter;
-        final int oldTailChapter = mTailChapter;
 
         mPageCountArray[chapter] = newPageCount;
         mClipsArray[chapter] = new boolean[newPageCount];
