@@ -8,7 +8,7 @@ import com.hippo.glgallery.GalleryProvider;
 import com.hippo.glgallery.GalleryView;
 import com.hippo.glgallery.ProviderAdapter;
 import com.hippo.glview.image.ImageTexture;
-import com.hippo.glview.view.GLRootView;
+import com.hippo.glview.view.GLRoot;
 import com.hippo.image.Image;
 import com.hippo.unifile.UniFile;
 import com.hippo.yorozuya.LayoutUtils;
@@ -32,19 +32,19 @@ public class MainActivity extends GLActivity implements GalleryView.Listener {
     }
 
     @Override
-    public void onGLThreadStarts() {
+    public void onGLThreadStart() {
         // Must create buffer before any image render
         Image.createBuffer(ImageTexture.LARGEST_TILE_SIZE * ImageTexture.LARGEST_TILE_SIZE);
 
-        final GLRootView glRootView = getGLRootView();
+        final GLRoot glRoot = getGLRoot();
 
         mGalleryProvider = new DirGalleryProvider(getResources(),
                 UniFile.fromFile(new File(Environment.getExternalStorageDirectory(), "GLGallery")));
-        mAdapter = new ProviderAdapter(glRootView, mGalleryProvider, 0, 3);
+        mAdapter = new ProviderAdapter(glRoot, mGalleryProvider, 0, 3);
         mAdapter.setShowIndex(true);
         mAdapter.setClipMode(ProviderAdapter.CLIP_RIGHT_LEFT);
 
-        final GalleryView.Builder builder = new GalleryView.Builder(this);
+        final GalleryView.Builder builder = new GalleryView.Builder(this, glRoot);
         builder.layoutMode = GalleryView.LAYOUT_SCROLL_TOP_TO_BOTTOM;
 
         builder.backgroundColor = 0xff212121;
@@ -70,13 +70,13 @@ public class MainActivity extends GLActivity implements GalleryView.Listener {
         final GalleryView galleryView = builder.build();
         galleryView.setAdapter(mAdapter);
 
-        glRootView.setContentPane(galleryView);
+        glRoot.setContentPane(galleryView);
 
         mGalleryProvider.start();
     }
 
     @Override
-    public void onGLThreadExits() {
+    public void onGLThreadExit() {
         Image.destroyBuffer();
 
         mGalleryProvider.stop();

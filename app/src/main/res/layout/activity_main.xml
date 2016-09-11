@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.hippo.glview.view.GLRootView
+<com.hippo.glview.view.GLRoot
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/gl_root"
     android:layout_width="match_parent"
