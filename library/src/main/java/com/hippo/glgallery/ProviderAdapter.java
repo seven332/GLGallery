@@ -22,7 +22,7 @@ import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.hippo.glview.image.ImageTexture;
-import com.hippo.glview.view.GLRootView;
+import com.hippo.glview.view.GLRoot;
 import com.hippo.image.ImageData;
 import com.hippo.yorozuya.MathUtils;
 
@@ -77,11 +77,11 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
 
     private final Rect mTemp = new Rect();
 
-    public ProviderAdapter(@NonNull GLRootView glRootView, @NonNull GalleryProvider provider, int chapter, int page) {
+    public ProviderAdapter(@NonNull GLRoot glRoot, @NonNull GalleryProvider provider, int chapter, int page) {
         mProvider = provider;
-        provider.setGLRoot(glRootView);
+        provider.setGLRoot(glRoot);
         provider.setListener(this);
-        mUploader = new ImageTexture.Uploader(glRootView);
+        mUploader = new ImageTexture.Uploader(glRoot);
 
         mChapter = chapter;
         mPage = page;
@@ -497,11 +497,11 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
         final int pageCount = mPageCountArray[chapter];
         if (pageCount == 0) {
-            Log.e(LOG_TAG, "Can't check isHead, this chapter is empty.");
+            // This chapter is empty.
             return true;
         }
         if (chapter < mHeadChapter || chapter > mTailChapter) {
-            Log.e(LOG_TAG, "Can't check isHead, chapter out of range.");
+            // This chapter is out of range.
             return true;
         }
 
@@ -515,11 +515,11 @@ public class ProviderAdapter extends GalleryView.Adapter implements GalleryProvi
         }
         final int pageCount = mPageCountArray[chapter];
         if (pageCount == 0) {
-            Log.e(LOG_TAG, "Can't check isHead, this chapter is empty.");
+            // This chapter is empty.
             return true;
         }
         if (chapter < mHeadChapter || chapter > mTailChapter) {
-            Log.e(LOG_TAG, "Can't check isHead, chapter out of range.");
+            // This chapter is out of range.
             return true;
         }
 

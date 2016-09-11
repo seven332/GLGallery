@@ -24,11 +24,11 @@ public class Main {
             "        mMethodList.add(method);\n" +
             "        mArgsList.add(args);\n" +
             "    }\n" +
-            "    mGalleryView.invalidate();\n" +
+            "    request();\n" +
             "}";
 
     private static final String METHOD_DISPATCH_METHOD_PART1 =
-            "void dispatchMethod() {\n" +
+            "public void onHandle(GL10 gl) {\n" +
             "    final List<Integer> methodList = mMethodListTemp;\n" +
             "    final List<Object[]> argsList = mArgsListTemp;\n" +
             "    synchronized (this) {\n" +
@@ -85,8 +85,10 @@ public class Main {
         javaClass.setPackage("com.hippo.glgallery");
         javaClass.addImport(List.class);
         javaClass.addImport(ArrayList.class);
+        javaClass.addImport("javax.microedition.khronos.opengles.GL10");
         javaClass.setPackagePrivate();
         javaClass.setName("Postman");
+        javaClass.setSuperType("com.hippo.glview.view.GLRoot.Handler");
 
         javaClass.addField("private static final int INIT_SIZE = 5");
         javaClass.addField("private final List<Integer> mMethodList = new ArrayList<>(INIT_SIZE)");

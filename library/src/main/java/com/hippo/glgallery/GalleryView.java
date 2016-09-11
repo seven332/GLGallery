@@ -142,6 +142,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     public static class Builder {
 
         private final Context mContext;
+        private final GLRoot mGLRoot;
 
         public int layoutMode = LAYOUT_PAGER_LEFT_TO_RIGHT;
         public int scaleMode = SCALE_FIT;
@@ -166,8 +167,9 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         public String defaultErrorString = "Error";
         public String emptyString = "Empty";
 
-        public Builder(@NonNull Context context) {
+        public Builder(@NonNull Context context, @NonNull GLRoot GLRoot) {
             mContext = context;
+            mGLRoot = GLRoot;
         }
 
         public GalleryView build() {
@@ -180,6 +182,8 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         mGestureRecognizer = new GestureRecognizer(mContext, this);
         mEdgeView = new GLEdgeView(build.edgeColor);
         mPostman = new Postman(this);
+
+        build.mGLRoot.registerHandler(mPostman);
 
         mLayoutMode = build.layoutMode;
         mScaleMode = build.scaleMode;
@@ -727,9 +731,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     @Override
     public void render(GLCanvas canvas) {
         mWillFill = true;
-
-        // Dispatch method
-        mPostman.dispatchMethod();
 
         if (mLayoutManager != null && mLayoutManager.onUpdateAnimation(AnimationTime.get())) {
             invalidate();
