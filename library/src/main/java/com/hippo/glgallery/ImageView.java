@@ -261,6 +261,11 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
             updateScale();
 
+            getValidRect(mValidRect);
+            if (!mValidRect.isEmpty()) {
+                mImage.start();
+            }
+
             // Only show alpha animation for the ImageView which can be seen.
             //getValidRect(mValidRect);
             //if (!mValidRect.isEmpty()) {
