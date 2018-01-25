@@ -104,6 +104,8 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private static final int METHOD_SET_SCALE_MODE = 18;
     private static final int METHOD_SET_START_POSITION = 19;
     private static final int METHOD_ON_ATTACH_TO_ROOT = 20;
+    private static final int METHOD_SET_PAGER_INTERVAL = 21;
+    private static final int METHOD_SET_SCROLL_INTERVAL = 22;
 
     private final Context mContext;
     private Adapter mAdapter;
@@ -124,8 +126,8 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private GLTextureView mErrorViewCache;
 
     private final int mBackgroundColor;
-    private final int mPagerInterval;
-    private final int mScrollInterval;
+    private int mPagerInterval;
+    private int mScrollInterval;
     private final int mPageMinHeight;
     private final int mPageInfoInterval;
     private final int mProgressColor;
@@ -400,6 +402,20 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         attachLayoutManager();
     }
 
+    private void setPagerIntervalInternal(int interval) {
+        mPagerInterval = interval;
+        if (mPagerLayoutManager != null) {
+            mPagerLayoutManager.setInterval(interval);
+        }
+    }
+
+    private void setScrollIntervalInternal(int interval) {
+        mScrollInterval = interval;
+        if (mScrollLayoutManager != null) {
+            mScrollLayoutManager.setInterval(interval);
+        }
+    }
+
     @Override
     public void onAttachToRoot(GLRoot root) {
         super.onAttachToRoot(root);
@@ -537,6 +553,14 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
     public void setStartPosition(int startPosition) {
         postMethod(METHOD_SET_START_POSITION, startPosition);
+    }
+
+    public void setPagerInterval(int interval) {
+        postMethod(METHOD_SET_PAGER_INTERVAL, interval);
+    }
+
+    public void setScrollInterval(int interval) {
+        postMethod(METHOD_SET_SCROLL_INTERVAL, interval);
     }
 
     @Override
@@ -953,6 +977,12 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
                     break;
                 case METHOD_ON_ATTACH_TO_ROOT:
                     onAttachToRootInternal();
+                    break;
+                case METHOD_SET_PAGER_INTERVAL:
+                    setPagerIntervalInternal((Integer) args[0]);
+                    break;
+                case METHOD_SET_SCROLL_INTERVAL:
+                    setScrollIntervalInternal((Integer) args[0]);
                     break;
             }
         }

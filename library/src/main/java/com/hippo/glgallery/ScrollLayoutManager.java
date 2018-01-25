@@ -67,7 +67,7 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     private boolean mFlingUp;
     private boolean mStopAnimationFinger;
 
-    private final int mInterval;
+    private int mInterval;
 
     private final PageFling mPageFling;
     private final SmoothScaler mSmoothScaler;
@@ -86,6 +86,19 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
         mPageFling = new PageFling(context);
         mSmoothScaler = new SmoothScaler();
         mOverScroller = new OverScroller();
+    }
+
+    public void setInterval(int interval) {
+        if (mAdapter != null) {
+            int index = getInternalCurrentIndex();
+            GalleryView.Adapter adapter = onDetach();
+            mInterval = interval;
+            onAttach(adapter);
+            setCurrentIndex(index);
+            mGalleryView.requestFill();
+        } else {
+            mInterval = interval;
+        }
     }
 
     private void resetParameters() {
