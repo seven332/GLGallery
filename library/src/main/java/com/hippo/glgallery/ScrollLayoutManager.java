@@ -89,6 +89,10 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
     }
 
     public void setInterval(int interval) {
+        if (mInterval == interval) {
+            return;
+        }
+
         if (mAdapter != null) {
             int index = getInternalCurrentIndex();
             GalleryView.Adapter adapter = onDetach();
