@@ -677,12 +677,30 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private void onSingleTapUpInternal(float x, float y) {
     }
 
+    private GalleryPageView findPageUnder(float x, float y) {
+        for (int i = 0, n = getComponentCount(); i < n; i++) {
+            GLView view = getComponent(i);
+            if (view instanceof GalleryPageView && view.bounds().contains((int) x, (int) y)) {
+                return (GalleryPageView) view;
+            }
+        }
+        return null;
+    }
+
     private void onSingleTapConfirmedInternal(float x, float y) {
         if (mLayoutManager == null || !mLayoutManager.isTapOrPressEnable()) {
             return;
         }
 
-        if (mSliderArea.contains((int) x, (int) y)) {
+        GalleryPageView page = findPageUnder(x, y);
+        if (page != null &&
+            page.getIndex() != GalleryPageView.INVALID_INDEX &&
+            page.isError() &&
+            page.isUnderInfo(x - page.bounds().left, y - page.bounds().top)) {
+            if (mListener != null) {
+                mListener.onTapErrorText(page.getIndex());
+            }
+        } else if (mSliderArea.contains((int) x, (int) y)) {
             if (mListener != null) {
                 mListener.onTapSliderArea();
             }
@@ -1210,6 +1228,9 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         @RenderThread
         void onTapMenuArea();
+
+        @RenderThread
+        void onTapErrorText(int index);
 
         @RenderThread
         void onLongPressPage(int index);
