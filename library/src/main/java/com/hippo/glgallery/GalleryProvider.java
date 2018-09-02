@@ -228,7 +228,7 @@ public abstract class GalleryProvider {
         }
 
         public void add(Integer key, ImageWrapper value) {
-            if (value.obtain()) {
+            if (value.getFormat() != Image.FORMAT_GIF && value.obtain()) {
                 put(key, value);
             }
         }
