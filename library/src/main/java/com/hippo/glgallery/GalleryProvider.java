@@ -18,8 +18,8 @@ package com.hippo.glgallery;
 
 import android.support.annotation.IntDef;
 import android.support.annotation.UiThread;
+import android.util.LruCache;
 
-import com.hippo.beerbelly.LruCache;
 import com.hippo.glview.glrenderer.GLCanvas;
 import com.hippo.glview.image.ImageWrapper;
 import com.hippo.glview.view.GLRoot;
@@ -57,7 +57,7 @@ public abstract class GalleryProvider {
     @UiThread
     public void stop() {
         OSUtils.checkMainLoop();
-        mImageCache.close();
+        mImageCache.evictAll();
     }
 
     public void setGLRoot(GLRoot glRoot) {
