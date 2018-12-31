@@ -16,17 +16,15 @@
 
 package com.hippo.glgallery;
 
+import android.graphics.ColorMatrix;
 import android.graphics.Rect;
 import android.graphics.RectF;
-
 import com.hippo.glview.anim.AlphaAnimation;
 import com.hippo.glview.glrenderer.GLCanvas;
-import com.hippo.glview.glrenderer.Texture;
 import com.hippo.glview.image.ImageTexture;
 import com.hippo.glview.view.GLView;
 import com.hippo.yorozuya.AnimationUtils;
 import com.hippo.yorozuya.MathUtils;
-
 import java.util.Arrays;
 
 class ImageView extends GLView implements ImageTexture.Callback {
@@ -58,6 +56,8 @@ class ImageView extends GLView implements ImageTexture.Callback {
     private final RectF mDstActual = new RectF();
     private final Rect mValidRect = new Rect();
 
+    private ColorMatrix mColorMatrix = null;
+
     private int mScaleMode = SCALE_FIT;
     private int mStartPosition = START_POSITION_TOP_RIGHT;
     private float mScaleValue = 1.0f;
@@ -73,6 +73,11 @@ class ImageView extends GLView implements ImageTexture.Callback {
         mAlphaAnimation = new AlphaAnimation(0.0f, 1.0f);
         mAlphaAnimation.setDuration(ALPHA_ANIMATION_DURING);
         mAlphaAnimation.setInterpolator(AnimationUtils.FAST_SLOW_INTERPOLATOR);
+    }
+
+    public void setColorMatrix(ColorMatrix colorMatrix) {
+        mColorMatrix = colorMatrix;
+        invalidate();
     }
 
     public static int sanitizeScaleMode(int scaleMode) {
@@ -581,7 +586,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
 
     @Override
     public void onRender(GLCanvas canvas) {
-        Texture texture = mImageTexture;
+        ImageTexture texture = mImageTexture;
         if (texture == null) {
             return;
         }
@@ -595,7 +600,7 @@ class ImageView extends GLView implements ImageTexture.Callback {
         }
 
         if (!mSrcActual.isEmpty()) {
-            texture.draw(canvas, mSrcActual, mDstActual);
+            texture.draw(canvas, mSrcActual, mDstActual, mColorMatrix);
         }
     }
 

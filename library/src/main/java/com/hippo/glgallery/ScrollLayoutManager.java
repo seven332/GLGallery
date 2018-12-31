@@ -17,6 +17,7 @@
 package com.hippo.glgallery;
 
 import android.content.Context;
+import android.graphics.ColorMatrix;
 import android.graphics.Rect;
 import android.support.annotation.NonNull;
 import android.util.Log;
@@ -1068,6 +1069,13 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             currentIndex = mIndex;
         }
         return currentIndex;
+    }
+
+    @Override
+    public void setColorMatrix(ColorMatrix colorMatrix) {
+        for (GalleryPageView page : mPages) {
+            page.getImageView().setColorMatrix(colorMatrix);
+        }
     }
 
     private class PageFling extends Fling {
