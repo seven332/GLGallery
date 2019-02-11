@@ -84,6 +84,10 @@ public abstract class GalleryProvider {
         onForceRequest(index);
     }
 
+    public void removeCache(int index) {
+        mImageCache.remove(index);
+    }
+
     protected abstract void onRequest(int index);
 
     protected abstract void onForceRequest(int index);
