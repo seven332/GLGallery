@@ -17,13 +17,11 @@
 package com.hippo.glgallery;
 
 import android.content.Context;
-import android.graphics.ColorMatrix;
 import android.graphics.Rect;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.animation.Interpolator;
-
 import com.hippo.glview.anim.Animation;
 import com.hippo.glview.anim.FloatAnimation;
 import com.hippo.glview.view.GLView;
@@ -33,7 +31,6 @@ import com.hippo.glview.widget.GLTextureView;
 import com.hippo.yorozuya.AnimationUtils;
 import com.hippo.yorozuya.AssertUtils;
 import com.hippo.yorozuya.MathUtils;
-
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -876,19 +873,6 @@ class PagerLayoutManager extends GalleryView.LayoutManager {
             currentIndex = mIndex;
         }
         return currentIndex;
-    }
-
-    @Override
-    public void setColorMatrix(ColorMatrix colorMatrix) {
-        if (mCurrent != null) {
-            mCurrent.getImageView().setColorMatrix(colorMatrix);
-        }
-        if (mPrevious != null) {
-            mPrevious.getImageView().setColorMatrix(colorMatrix);
-        }
-        if (mNext != null) {
-            mNext.getImageView().setColorMatrix(colorMatrix);
-        }
     }
 
     private class SmoothScroller extends Animation {

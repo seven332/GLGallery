@@ -17,11 +17,9 @@
 package com.hippo.glgallery;
 
 import android.content.Context;
-import android.graphics.ColorMatrix;
 import android.graphics.Rect;
 import android.support.annotation.NonNull;
 import android.util.Log;
-
 import com.hippo.glview.anim.Animation;
 import com.hippo.glview.anim.FloatAnimation;
 import com.hippo.glview.view.GLView;
@@ -31,7 +29,6 @@ import com.hippo.glview.widget.GLTextureView;
 import com.hippo.yorozuya.AnimationUtils;
 import com.hippo.yorozuya.AssertUtils;
 import com.hippo.yorozuya.MathUtils;
-
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -1069,13 +1066,6 @@ class ScrollLayoutManager extends GalleryView.LayoutManager {
             currentIndex = mIndex;
         }
         return currentIndex;
-    }
-
-    @Override
-    public void setColorMatrix(ColorMatrix colorMatrix) {
-        for (GalleryPageView page : mPages) {
-            page.getImageView().setColorMatrix(colorMatrix);
-        }
     }
 
     private class PageFling extends Fling {

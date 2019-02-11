@@ -18,7 +18,6 @@ package com.hippo.glgallery;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.ColorMatrix;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.support.annotation.IntDef;
@@ -39,6 +38,7 @@ import com.hippo.glview.widget.GLEdgeView;
 import com.hippo.glview.widget.GLProgressView;
 import com.hippo.glview.widget.GLTextureView;
 import com.hippo.yorozuya.MathUtils;
+import com.hippo.yorozuya.Pool;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
@@ -104,7 +104,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private static final int METHOD_ON_ATTACH_TO_ROOT = 20;
     private static final int METHOD_SET_PAGER_INTERVAL = 21;
     private static final int METHOD_SET_SCROLL_INTERVAL = 22;
-    private static final int METHOD_SET_COLOR_MATRIX = 23;
 
     private final Context mContext;
     private Adapter mAdapter;
@@ -120,7 +119,7 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private LayoutManager mLayoutManager;
 
     private final GLEdgeView mEdgeView;
-    private final GalleryPageViewPool mGalleryPageViewPool = new GalleryPageViewPool(5);
+    private final Pool<GalleryPageView> mGalleryPageViewPool = new Pool<>(5);
     private GLProgressView mProgressCache;
     private GLTextureView mErrorViewCache;
 
@@ -156,7 +155,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
     private int mLayoutMode = LAYOUT_RIGHT_TO_LEFT;
     private int mScaleMode = ImageView.SCALE_FIT;
     private int mStartPosition = ImageView.START_POSITION_TOP_LEFT;
-    private ColorMatrix mColorMatrix = null;
     private int mIndex;
 
     private final List<Integer> mMethodList = new ArrayList<>(5);
@@ -175,7 +173,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         private int mLayoutMode = LAYOUT_LEFT_TO_RIGHT;
         private int mScaleMode = SCALE_FIT;
         private int mStartPosition = START_POSITION_TOP_LEFT;
-        private ColorMatrix mColorMatrix = null;
         private int mStartPage = 0;
 
         private int mBackgroundColor = Color.BLACK;
@@ -216,11 +213,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         public Builder setStartPosition(@StartPosition int startPosition) {
             mStartPosition = startPosition;
-            return this;
-        }
-
-        public Builder setColorMatrix(ColorMatrix colorMatrix) {
-            mColorMatrix = colorMatrix;
             return this;
         }
 
@@ -320,7 +312,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         mLayoutMode = build.mLayoutMode;
         mScaleMode = build.mScaleMode;
         mStartPosition = build.mStartPosition;
-        mColorMatrix = build.mColorMatrix;
         mIndex = MathUtils.clamp(build.mStartPage, 0, Integer.MAX_VALUE);
 
         mBackgroundColor = build.mBackgroundColor;
@@ -421,17 +412,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
         if (mScrollLayoutManager != null) {
             mScrollLayoutManager.setInterval(interval);
         }
-    }
-
-    private void setColorMatrixInternal(ColorMatrix colorMatrix) {
-        mColorMatrix = colorMatrix;
-        if (mPagerLayoutManager != null) {
-            mPagerLayoutManager.setColorMatrix(colorMatrix);
-        }
-        if (mScrollLayoutManager != null) {
-            mScrollLayoutManager.setColorMatrix(colorMatrix);
-        }
-        mGalleryPageViewPool.setColorMatrix(colorMatrix);
     }
 
     @Override
@@ -579,10 +559,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
     public void setScrollInterval(int interval) {
         postMethod(METHOD_SET_SCROLL_INTERVAL, interval);
-    }
-
-    public void setColorMatrix(ColorMatrix colorMatrix) {
-        postMethod(METHOD_SET_COLOR_MATRIX, colorMatrix);
     }
 
     @Override
@@ -1024,9 +1000,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
                 case METHOD_SET_SCROLL_INTERVAL:
                     setScrollIntervalInternal((Integer) args[0]);
                     break;
-                case METHOD_SET_COLOR_MATRIX:
-                    setColorMatrixInternal((ColorMatrix) args[0]);
-                    break;
             }
         }
 
@@ -1081,7 +1054,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
             page = new GalleryPageView(mPageTextTexture,
                     mProgressColor, mBackgroundColor, mProgressSize,
                     mPageMinHeight, mPageInfoInterval);
-            page.getImageView().setColorMatrix(mColorMatrix);
         }
         return page;
     }
@@ -1232,8 +1204,6 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         abstract int getInternalCurrentIndex();
 
-        public abstract void setColorMatrix(ColorMatrix colorMatrix);
-
         protected void placeCenter(GLView view) {
             int spec = GLView.MeasureSpec.makeMeasureSpec(GLView.LayoutParams.WRAP_CONTENT,
                     GLView.LayoutParams.WRAP_CONTENT);
@@ -1262,40 +1232,5 @@ public final class GalleryView extends GLView implements GestureRecognizer.Liste
 
         @RenderThread
         void onLongPressPage(int index);
-    }
-
-    private class GalleryPageViewPool {
-
-        private final GalleryPageView[] mArray;
-        private final int mMaxSize;
-        private int mSize;
-
-        private GalleryPageViewPool(int size) {
-            mArray = new GalleryPageView[size];
-            mMaxSize = size;
-            mSize = 0;
-        }
-
-        private void push(GalleryPageView t) {
-            if (t != null && mSize < mMaxSize) {
-                mArray[mSize++] = t;
-            }
-        }
-
-        private GalleryPageView pop() {
-            if (mSize > 0) {
-                GalleryPageView t = mArray[--mSize];
-                mArray[mSize] = null;
-                return t;
-            } else {
-                return null;
-            }
-        }
-
-        private void setColorMatrix(ColorMatrix colorMatrix) {
-            for (int i = 0; i < mSize; i++) {
-                mArray[i].getImageView().setColorMatrix(colorMatrix);
-            }
-        }
     }
 }
