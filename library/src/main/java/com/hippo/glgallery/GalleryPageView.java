@@ -183,11 +183,11 @@ public class GalleryPageView extends GLFrameLayout {
         return mImage;
     }
 
-    boolean isLoaded() {
+    public boolean isLoaded() {
         return mImage.getVisibility() == VISIBLE;
     }
 
-    boolean isError() {
+    public boolean isError() {
         return mError.getVisibility() == VISIBLE;
     }
 
